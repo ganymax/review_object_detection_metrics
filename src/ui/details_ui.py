@@ -5,8 +5,6 @@
 # Created by: PyQt5 UI code generator 5.12.3
 #
 # WARNING! All changes made in this file will be lost!
-#
-# Modified to add scale-based bounding box visualization support.
 
 
 from PyQt5 import QtCore, QtGui, QtWidgets
@@ -15,7 +13,7 @@ from PyQt5 import QtCore, QtGui, QtWidgets
 class Ui_Dialog(object):
     def setupUi(self, Dialog):
         Dialog.setObjectName("Dialog")
-        Dialog.resize(892, 480)  # Increased height to accommodate new button
+        Dialog.resize(892, 442)
         self.lbl_sample_image = QtWidgets.QLabel(Dialog)
         self.lbl_sample_image.setGeometry(QtCore.QRect(520, 30, 361, 341))
         self.lbl_sample_image.setFrameShape(QtWidgets.QFrame.Box)
@@ -32,12 +30,6 @@ class Ui_Dialog(object):
         self.pushButton_3 = QtWidgets.QPushButton(Dialog)
         self.pushButton_3.setGeometry(QtCore.QRect(10, 410, 231, 27))
         self.pushButton_3.setObjectName("pushButton_3")
-        
-        # New button for plotting bounding boxes per scale
-        self.btn_plot_scale = QtWidgets.QPushButton(Dialog)
-        self.btn_plot_scale.setGeometry(QtCore.QRect(250, 410, 261, 27))
-        self.btn_plot_scale.setObjectName("btn_plot_scale")
-        
         self.btn_save_image = QtWidgets.QPushButton(Dialog)
         self.btn_save_image.setGeometry(QtCore.QRect(520, 410, 361, 27))
         self.btn_save_image.setObjectName("btn_save_image")
@@ -58,15 +50,9 @@ class Ui_Dialog(object):
         self.btn_next_image = QtWidgets.QPushButton(Dialog)
         self.btn_next_image.setGeometry(QtCore.QRect(850, 0, 31, 27))
         self.btn_next_image.setObjectName("btn_next_image")
-        
-        # Scale color legend label
-        self.lbl_scale_legend = QtWidgets.QLabel(Dialog)
-        self.lbl_scale_legend.setGeometry(QtCore.QRect(10, 445, 501, 30))
-        self.lbl_scale_legend.setObjectName("lbl_scale_legend")
 
         self.retranslateUi(Dialog)
         self.pushButton_3.clicked.connect(Dialog.btn_plot_bb_per_classes_clicked)
-        self.btn_plot_scale.clicked.connect(Dialog.btn_plot_bb_per_scale_clicked)
         self.btn_save_image.clicked.connect(Dialog.btn_save_image_clicked)
         self.btn_previous_image.clicked.connect(Dialog.btn_previous_image_clicked)
         self.btn_next_image.clicked.connect(Dialog.btn_next_image_clicked)
@@ -95,24 +81,17 @@ class Ui_Dialog(object):
 "<p align=\"justify\" style=\" margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;\">[cat]: 231 bounding boxes in 393 images.</p>\n"
 "<p align=\"justify\" style=\" margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;\">(ordenar classes por ordem alfabética)</p></body></html>"))
         self.lbl_groundtruth_dir_5.setText(_translate("Dialog", "Statistics:"))
-        self.pushButton_3.setToolTip(_translate("Dialog", "Plot distribution of bounding boxes per object class."))
+        self.pushButton_3.setToolTip(_translate("Dialog", "The configurations will be applied in a random ground truth image."))
         self.pushButton_3.setText(_translate("Dialog", "plot bounding boxes per class"))
-        self.btn_plot_scale.setToolTip(_translate("Dialog", "Plot distribution of bounding boxes per COCO scale category (small/medium/large)."))
-        self.btn_plot_scale.setText(_translate("Dialog", "plot bounding boxes per scale"))
-        self.btn_save_image.setToolTip(_translate("Dialog", "Save the current image with bounding box overlays."))
+        self.btn_save_image.setToolTip(_translate("Dialog", "The configurations will be applied in a random ground truth image."))
         self.btn_save_image.setText(_translate("Dialog", "save"))
         self.lbl_image_file_name.setText(_translate("Dialog", "no image to show"))
         self.chb_gt_bb.setText(_translate("Dialog", "draw groundtruths"))
         self.chb_det_bb.setText(_translate("Dialog", "draw detections"))
-        self.btn_previous_image.setToolTip(_translate("Dialog", "Show previous image."))
+        self.btn_previous_image.setToolTip(_translate("Dialog", "The configurations will be applied in a random ground truth image."))
         self.btn_previous_image.setText(_translate("Dialog", "<<"))
-        self.btn_next_image.setToolTip(_translate("Dialog", "Show next image."))
+        self.btn_next_image.setToolTip(_translate("Dialog", "The configurations will be applied in a random ground truth image."))
         self.btn_next_image.setText(_translate("Dialog", ">>"))
-        self.lbl_scale_legend.setText(_translate("Dialog", 
-            "<b>Scale Colors:</b> "
-            "<span style='color: blue;'>● Small (≤32²px)</span> | "
-            "<span style='color: green;'>● Medium (32²-96²px)</span> | "
-            "<span style='color: red;'>● Large (>96²px)</span>"))
 
 
 if __name__ == "__main__":

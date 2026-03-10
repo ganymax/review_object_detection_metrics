@@ -284,6 +284,74 @@ class TestVisualizationUtils:
         assert legend.shape[2] == 3  # BGR
         assert legend.shape[0] > 0
         assert legend.shape[1] > 0
+    
+    def test_add_bb_into_image_with_scale_color(self):
+        """Test drawing bounding boxes with scale-based colors."""
+        import numpy as np
+        
+        # Create a test image
+        img = np.zeros((200, 200, 3), dtype=np.uint8)
+        img.fill(255)  # White background
+        
+        # Create bounding boxes of different scales
+        small_bb = BoundingBox(
+            image_name='test',
+            class_id='small_obj',
+            coordinates=(10, 10, 20, 20),  # 400 area - small
+            type_coordinates=CoordinatesType.ABSOLUTE,
+            bb_type=BBType.GROUND_TRUTH,
+            format=BBFormat.XYWH
+        )
+        
+        medium_bb = BoundingBox(
+            image_name='test',
+            class_id='medium_obj',
+            coordinates=(50, 50, 50, 50),  # 2500 area - medium
+            type_coordinates=CoordinatesType.ABSOLUTE,
+            bb_type=BBType.GROUND_TRUTH,
+            format=BBFormat.XYWH
+        )
+        
+        large_bb = BoundingBox(
+            image_name='test',
+            class_id='large_obj',
+            coordinates=(10, 120, 100, 70),  # 7000 area - still medium
+            type_coordinates=CoordinatesType.ABSOLUTE,
+            bb_type=BBType.GROUND_TRUTH,
+            format=BBFormat.XYWH
+        )
+        
+        # Draw bounding boxes with scale colors
+        result = general_utils.add_bb_into_image_with_scale_color(
+            img.copy(), small_bb, thickness=2, show_scale_in_label=False
+        )
+        assert result is not None
+        assert result.shape == img.shape
+        
+        result = general_utils.add_bb_into_image_with_scale_color(
+            img.copy(), medium_bb, thickness=2, show_scale_in_label=True
+        )
+        assert result is not None
+        
+        result = general_utils.add_bb_into_image_with_scale_color(
+            img.copy(), large_bb, thickness=2, label='custom_label'
+        )
+        assert result is not None
+    
+    def test_draw_bbs_with_scale_colors(self):
+        """Test drawing multiple bounding boxes with scale colors."""
+        import numpy as np
+        
+        img = np.zeros((300, 300, 3), dtype=np.uint8)
+        img.fill(200)
+        
+        bbs = create_test_bboxes()[:3]
+        
+        result = general_utils.draw_bbs_with_scale_colors(
+            img.copy(), bbs, thickness=2, show_labels=True, show_scale_in_label=True
+        )
+        assert result is not None
+        assert result.shape == img.shape
 
 
 class TestEdgeCases:

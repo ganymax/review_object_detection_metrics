@@ -1,12 +1,13 @@
 """
-Details dialog for displaying bounding box statistics and image viewer.
+Details dialog for displaying bounding box statistics and image visualization.
 
-This module provides a PyQt5 dialog for viewing dataset statistics and 
-browsing images with bounding box overlays. Bounding boxes are color-coded
-based on their COCO scale category:
-- Small (area ≤ 32²px): Blue
-- Medium (32² < area ≤ 96²px): Green  
-- Large (area > 96²px): Red
+This module provides the Details_Dialog class which displays:
+- Bounding box statistics (count, average area, distribution by class)
+- Image viewer with bounding boxes drawn using COCO scale-based colors:
+  - Small objects (≤32²px): Blue
+  - Medium objects (32²-96²px): Green  
+  - Large objects (>96²px): Red
+- Scale distribution statistics and plotting
 """
 
 import os
@@ -25,25 +26,25 @@ from src.utils.general_utils import (
     get_files_dir,
     remove_file_extension,
     show_image_in_qt_component,
-    add_scale_legend_to_image,
+    plot_bb_per_scale,
 )
-from src.utils.object_scale import ObjectScale
+from src.utils.object_scale import ObjectScale, get_scale_label
 
 
 class Details_Dialog(QMainWindow, Details_UI):
     """
-    Dialog for displaying bounding box statistics and browsing annotated images.
+    Dialog window for displaying bounding box statistics and visualizing images.
     
-    This dialog shows:
-    - Statistics about the loaded annotations (count, average area, per-class distribution)
-    - An image viewer with bounding box overlays
-    - Bounding boxes are color-coded by COCO scale category (small/medium/large)
+    Features:
+    - Display statistics: total boxes, images, average area, class distribution
+    - Display scale distribution using COCO standard (small/medium/large)
+    - Image viewer with bounding boxes colored by scale category
+    - Plot generation for class and scale distributions
     
-    Attributes:
-        dir_images: Directory containing the dataset images.
-        gt_annotations: List of ground truth BoundingBox objects.
-        det_annotations: List of detection BoundingBox objects.
-        type_bb: Current bounding box type being displayed (GT or Detection).
+    Scale Color Coding (COCO Standard):
+    - Small (area ≤ 32²px = 1024px): Blue RGB(100, 100, 255)
+    - Medium (32²px < area ≤ 96²px = 9216px): Green RGB(100, 255, 100)
+    - Large (area > 96²px): Red RGB(255, 100, 100)
     """
     
     def __init__(self):
@@ -58,9 +59,12 @@ class Details_Dialog(QMainWindow, Details_UI):
         self.text_statistics += '<br>* The average area of the bounding boxes is <b>#AVERAGE_AREA_BB#</b> pixels.'
         self.text_statistics += '<br>* The amount of bounding boxes per class is:'
         self.text_statistics += '<br>#AMOUNT_BB_PER_CLASS#'
-        # Add scale distribution to statistics
-        self.text_statistics += '<br><br>* Bounding boxes by scale (COCO standard):'
-        self.text_statistics += '<br>#AMOUNT_BB_PER_SCALE#'
+        self.text_statistics += '<br><br>* <b>Scale distribution (COCO standard):</b>'
+        self.text_statistics += '<br>#SCALE_DISTRIBUTION#'
+        self.text_statistics += '<br><br><i>Note: Bounding boxes are color-coded by scale:</i>'
+        self.text_statistics += '<br><span style="color:blue">■</span> Small (≤32²px) '
+        self.text_statistics += '<span style="color:green">■</span> Medium (32²-96²px) '
+        self.text_statistics += '<span style="color:red">■</span> Large (>96²px)'
         self.lbl_sample_image.setScaledContents(True)
         # set maximum and minimum size
         self.setMaximumHeight(self.height())
@@ -73,11 +77,10 @@ class Details_Dialog(QMainWindow, Details_UI):
         Initialize the UI components with statistics and prepare image display.
         
         Computes and displays:
-        - Total bounding box count
-        - Total image count
+        - Total bounding box count and image count
         - Average bounding box area
-        - Per-class bounding box distribution
-        - Per-scale bounding box distribution (COCO standard: small/medium/large)
+        - Distribution by object class
+        - Distribution by COCO scale category (small/medium/large)
         """
         # clear all information
         self.txb_statistics.setText('')
@@ -112,30 +115,23 @@ class Details_Dialog(QMainWindow, Details_UI):
                 amount_bb_per_class += f'   {c} : {amount}<br>'
         stats = stats.replace('#AMOUNT_BB_PER_CLASS#', amount_bb_per_class)
         
-        # Get amount of bounding boxes per scale (COCO standard)
+        # Get scale distribution statistics (COCO standard)
+        self.scale_stats = BoundingBox.get_scale_statistics(self.annot_obj)
         self.bb_per_scale = BoundingBox.get_amount_bounding_box_by_scale(self.annot_obj)
-        scale_colors = {
-            'small': '<span style="color: blue;">●</span>',
-            'medium': '<span style="color: green;">●</span>',
-            'large': '<span style="color: red;">●</span>',
-        }
-        scale_labels = {
-            'small': 'Small (≤32²px)',
-            'medium': 'Medium (32²-96²px)',
-            'large': 'Large (>96²px)',
-        }
-        amount_bb_per_scale = ''
-        for scale_name in ['small', 'medium', 'large']:
-            if scale_name in self.bb_per_scale:
-                color_dot = scale_colors.get(scale_name, '')
-                label = scale_labels.get(scale_name, scale_name)
-                amount = self.bb_per_scale[scale_name]
-                amount_bb_per_scale += f'   {color_dot} {label}: {amount}<br>'
+        scale_distribution = ''
+        for scale in [ObjectScale.SMALL, ObjectScale.MEDIUM, ObjectScale.LARGE]:
+            count = self.scale_stats.get_count(scale)
+            pct = self.scale_stats.get_percentage(scale)
+            label = get_scale_label(scale)
+            # Color code the scale names in the statistics
+            if scale == ObjectScale.SMALL:
+                color = 'blue'
+            elif scale == ObjectScale.MEDIUM:
+                color = 'green'
             else:
-                color_dot = scale_colors.get(scale_name, '')
-                label = scale_labels.get(scale_name, scale_name)
-                amount_bb_per_scale += f'   {color_dot} {label}: 0<br>'
-        stats = stats.replace('#AMOUNT_BB_PER_SCALE#', amount_bb_per_scale)
+                color = 'red'
+            scale_distribution += f'   <span style="color:{color}">{label}</span>: {count} ({pct:.1f}%)<br>'
+        stats = stats.replace('#SCALE_DISTRIBUTION#', scale_distribution)
         
         self.txb_statistics.setText(stats)
 
@@ -176,72 +172,44 @@ class Details_Dialog(QMainWindow, Details_UI):
 
     def draw_bounding_boxes(self):
         """
-        Draw bounding boxes on the currently selected image.
+        Draw bounding boxes on the current image using COCO scale-based colors.
         
-        Bounding boxes are color-coded based on their COCO scale category:
-        - Small objects (area ≤ 32²px): Blue (RGB: 100, 100, 255)
-        - Medium objects (32² < area ≤ 96²px): Green (RGB: 100, 255, 100)
-        - Large objects (area > 96²px): Red (RGB: 255, 100, 100)
+        Bounding boxes are colored according to their COCO scale category:
+        - Small (area ≤ 32²px): Blue RGB(100, 100, 255)
+        - Medium (32²px < area ≤ 96²px): Green RGB(100, 255, 100)
+        - Large (area > 96²px): Red RGB(255, 100, 100)
         
-        The scale is determined by the bounding box area in absolute pixels,
-        following the COCO dataset standard thresholds.
+        The scale category is determined by the absolute pixel area of each
+        bounding box, following the COCO evaluation standard.
         
         Returns:
-            numpy.ndarray: Image with bounding boxes drawn, in RGB format.
+            numpy.ndarray: Image with bounding boxes drawn in scale-based colors.
         """
         # Load image to obtain a clean image (without BBs)
         img_path = os.path.join(self.dir_images, self.image_files[self.selected_image_index])
         img = cv2.imread(img_path)
-        if img is None:
-            # Return empty image if file cannot be loaded
-            import numpy as np
-            return np.zeros((480, 640, 3), dtype=np.uint8)
         img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-        
         # Get bounding boxes of the loaded image
         img_name = self.image_files[self.selected_image_index]
         img_name = general_utils.get_file_name_only(img_name)
-        
-        # Track if any bounding boxes were drawn (for legend display)
-        has_bboxes = False
         
         # Add ground truth bounding boxes with scale-based colors
         if self.chb_gt_bb.isChecked() and self.gt_annotations is not None:
             bboxes = BoundingBox.get_bounding_boxes_by_image_name(self.gt_annotations, img_name)
             # Draw bounding boxes with COCO scale-based colors
             for bb in bboxes:
-                if bb is None:
-                    continue
-                # Use scale-based color coding
-                # Label shows class name and scale category
-                label = f"{bb.get_class_id()} [GT]"
                 img = add_bb_into_image_with_scale_color(
-                    img, bb, thickness=2, label=label, show_scale_in_label=True
+                    img, bb, thickness=2, label=None, show_scale_in_label=False
                 )
-                has_bboxes = True
         
         # Add detection bounding boxes with scale-based colors
         if self.chb_det_bb.isChecked() and self.det_annotations is not None:
             bboxes = BoundingBox.get_bounding_boxes_by_image_name(self.det_annotations, img_name)
             # Draw bounding boxes with COCO scale-based colors
             for bb in bboxes:
-                if bb is None:
-                    continue
-                # Use scale-based color coding
-                # Label shows class name, confidence, and scale category
-                confidence = bb.get_confidence()
-                if confidence is not None:
-                    label = f"{bb.get_class_id()} ({confidence:.2f}) [DET]"
-                else:
-                    label = f"{bb.get_class_id()} [DET]"
                 img = add_bb_into_image_with_scale_color(
-                    img, bb, thickness=2, label=label, show_scale_in_label=True
+                    img, bb, thickness=2, label=None, show_scale_in_label=False
                 )
-                has_bboxes = True
-        
-        # Add scale color legend to the image if bounding boxes are present
-        if has_bboxes:
-            img = add_scale_legend_to_image(img, position='top-right', margin=10)
         
         return img
 
@@ -255,10 +223,9 @@ class Details_Dialog(QMainWindow, Details_UI):
 
     def btn_plot_bb_per_classes_clicked(self):
         """
-        Plot the distribution of bounding boxes per object class.
+        Handle click event for plotting bounding box distribution by class.
         
-        Opens a matplotlib window showing a bar chart of bounding box
-        counts for each class in the dataset.
+        Displays a bar chart showing the count of bounding boxes per object class.
         """
         general_utils.plot_bb_per_classes(self.bb_per_class,
                                           horizontally=False,
@@ -267,13 +234,12 @@ class Details_Dialog(QMainWindow, Details_UI):
 
     def btn_plot_bb_per_scale_clicked(self):
         """
-        Plot the distribution of bounding boxes per COCO scale category.
+        Handle click event for plotting bounding box distribution by COCO scale.
         
-        Opens a matplotlib window showing bar and pie charts of bounding box
-        counts for each scale category (small, medium, large) following
-        the COCO dataset standard thresholds.
+        Displays charts showing the distribution of bounding boxes across
+        COCO scale categories (small, medium, large) with scale-appropriate colors.
         """
-        general_utils.plot_bb_per_scale(self.annot_obj, show=True)
+        plot_bb_per_scale(self.annot_obj, show=True)
 
     # def btn_load_random_image_clicked(self):
     #     self.load_random_image()

@@ -190,25 +190,39 @@ These three metrics, also referred to as AP Across Scales, apply the AP@[.5,.05:
 
 When evaluating objects of a given size, objects of the other sizes (both ground-truth and predicted) are not considered in the evaluation. This metric is also part of the COCO evaluation dataset.
 
-### Scale-Based Bounding Box Classification and Visualization
+### COCO Scale-Based Object Classification
 
-This toolkit provides comprehensive support for COCO-standard scale-based object classification:
+This toolkit provides comprehensive support for COCO's standard scale-based object classification system. Objects are classified into three categories based on their absolute bounding box area (in pixels):
 
-| Scale Category | Area Threshold | Color Code |
-|:--------------|:---------------|:-----------|
-| **Small** | area ≤ 32² pixels (1024 px) | Blue |
-| **Medium** | 32² < area ≤ 96² pixels (1024-9216 px) | Green |
-| **Large** | area > 96² pixels (9216 px) | Red |
+| Scale Category | Area Range | Pixel Threshold |
+|:-------------:|:----------:|:---------------:|
+| **Small** | area ≤ 32² | ≤ 1,024 pixels |
+| **Medium** | 32² < area ≤ 96² | 1,024 - 9,216 pixels |
+| **Large** | area > 96² | > 9,216 pixels |
 
-#### Features
+#### Scale-Based Color Coding
 
-- **Automatic Scale Classification**: Every bounding box is automatically classified into small, medium, or large based on its pixel area following COCO standards.
-- **Scale-Based Color Coding**: The GUI image viewer displays bounding boxes with colors indicating their scale category, making it easy to visually identify object sizes.
-- **Scale Distribution Statistics**: The statistics panel shows the distribution of bounding boxes across scale categories.
-- **Scale Distribution Plotting**: Plot the distribution of bounding boxes per scale category using bar charts and pie charts.
-- **Detailed Scale Metrics**: Get precision, recall, and F1 scores broken down by scale category.
+When visualizing bounding boxes in the GUI, they are automatically color-coded based on their COCO scale category:
 
-#### Programmatic Usage
+| Scale | Color | RGB Value |
+|:-----:|:-----:|:---------:|
+| Small | Blue | (100, 100, 255) |
+| Medium | Green | (100, 255, 100) |
+| Large | Red | (255, 100, 100) |
+
+This color coding provides immediate visual feedback about object sizes in your dataset.
+
+#### Scale Distribution Statistics
+
+The statistics dialog displays:
+- Count of bounding boxes in each scale category
+- Percentage distribution across scales
+- Average area per scale category
+- Visual indicators matching the color coding
+
+#### Programmatic Scale Classification
+
+You can also classify objects by scale programmatically:
 
 ```python
 from src.bounding_box import BoundingBox
@@ -217,26 +231,29 @@ from src.utils.object_scale import ObjectScale
 # Get scale for a single bounding box
 bb = BoundingBox(...)
 scale = bb.get_scale()  # Returns ObjectScale.SMALL, MEDIUM, or LARGE
-is_small = bb.is_small()  # True if area <= 32^2
+is_small = bb.is_small()  # Boolean check
 
 # Get scale-based color for visualization
-rgb_color = bb.get_scale_color('rgb')  # (R, G, B) tuple
-bgr_color = bb.get_scale_color('bgr')  # For OpenCV
+color_rgb = bb.get_scale_color('rgb')  # (R, G, B) tuple
+color_bgr = bb.get_scale_color('bgr')  # OpenCV format
 
 # Get scale statistics for a list of bounding boxes
 stats = BoundingBox.get_scale_statistics(bounding_boxes)
-print(stats)  # Shows count and percentage per scale
+print(stats)  # Shows distribution across scales
 
 # Filter boxes by scale
 small_boxes = BoundingBox.filter_by_scale(bounding_boxes, ObjectScale.SMALL)
 medium_boxes = BoundingBox.filter_by_scale(bounding_boxes, ObjectScale.MEDIUM)
+large_boxes = BoundingBox.filter_by_scale(bounding_boxes, ObjectScale.LARGE)
 
 # Group boxes by scale
 groups = BoundingBox.group_by_scale(bounding_boxes)
-# groups[ObjectScale.SMALL], groups[ObjectScale.MEDIUM], groups[ObjectScale.LARGE]
+# Returns: {ObjectScale.SMALL: [...], ObjectScale.MEDIUM: [...], ObjectScale.LARGE: [...]}
 ```
 
 #### Extended COCO Metrics with Scale Analysis
+
+Get detailed scale-based evaluation metrics:
 
 ```python
 from src.evaluators.coco_evaluator import (
@@ -244,9 +261,13 @@ from src.evaluators.coco_evaluator import (
     format_scale_metrics_report
 )
 
-# Get detailed scale-based metrics
+# Get extended metrics including scale distribution
 summary = get_coco_summary_with_scale_details(gt_boxes, det_boxes)
-# Includes: standard COCO metrics + scale distributions + per-scale precision/recall/F1
+
+# Access scale-specific metrics
+print(summary['scale_metrics']['small']['precision'])
+print(summary['scale_metrics']['medium']['recall'])
+print(summary['scale_metrics']['large']['f1_score'])
 
 # Generate a formatted report
 report = format_scale_metrics_report(gt_boxes, det_boxes)
@@ -305,26 +326,22 @@ Each number in red represents a funcionality described below:
 11) **Output**: Choose a folder where PASCAL VOC AP plots will be saved.
 12) **RUN**: Run the metrics. Depending on the amount of your dataset and the format of your detections, it may take a while. Detections in relative coordinates usually take a little longer to read than other formats.
 
-Visualize the statistics of your dataset (Options #5 and #9: Ground-truth and detection statistics) to make sure you have chosen the right formats. If somehow the formats are incorrect the boxes are going to appear incorreclty on the images.
+Visualize the statistics of your dataset (Options #5 and #9: Ground-truth and detection statistics) to make sure you have chosen the right formats. If somehow the formats are incorrect the boxes are going to appear incorrectly on the images.
 
 <!--- interpolated precision AUC --->
 <p align="center">
 <img src="https://github.com/rafaelpadilla/review_object_detection_metrics/blob/main/data/images/printshot_details_groundtruth.png" align="center"/>
 </p>
 
-You can also save the images and plot a bar plot with the distribution of the boxes per class.
+The statistics dialog now includes:
+- **Class Distribution**: Number of bounding boxes per object class
+- **Scale Distribution**: Distribution across COCO scale categories (small/medium/large)
+- **Scale-Colored Visualization**: Bounding boxes are drawn with colors indicating their scale:
+  - <span style="color:blue">**Blue**</span>: Small objects (area ≤ 32² pixels)
+  - <span style="color:green">**Green**</span>: Medium objects (32² < area ≤ 96² pixels)  
+  - <span style="color:red">**Red**</span>: Large objects (area > 96² pixels)
 
-#### Scale-Based Visualization in Statistics Dialog
-
-The statistics dialog now includes COCO scale-based features:
-
-- **Scale Distribution Statistics**: The statistics panel displays the count of bounding boxes per scale category (small, medium, large).
-- **Scale-Based Color Coding**: Bounding boxes in the image viewer are automatically color-coded by their scale:
-  - **Blue**: Small objects (area ≤ 32² pixels)
-  - **Green**: Medium objects (32² < area ≤ 96² pixels)  
-  - **Red**: Large objects (area > 96² pixels)
-- **Scale Legend**: A color legend is displayed on the image and at the bottom of the dialog.
-- **Plot Scale Distribution**: Click "plot bounding boxes per scale" to visualize the scale distribution with bar and pie charts.
+You can also save the images and plot bar charts showing the distribution of boxes per class or per scale category.
 
 #### Spatio-Temporal Tube
 
