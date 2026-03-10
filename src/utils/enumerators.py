@@ -1,5 +1,8 @@
 from enum import Enum
 
+# Re-export ObjectScale from object_scale module for convenient access
+from src.utils.object_scale import ObjectScale
+
 
 class MethodAveragePrecision(Enum):
     """
@@ -53,16 +56,3 @@ class FileFormat(Enum):
     OPENIMAGE = 7
     IMAGENET = 8
     UNKNOWN = 9
-
-
-class ObjectScale(Enum):
-    """
-    Class representing object scale categories based on COCO standard.
-    COCO defines object sizes based on absolute pixel area:
-        - Small:  area <= 32^2 (1024 pixels)
-        - Medium: 32^2 < area <= 96^2 (1024 < area <= 9216 pixels)
-        - Large:  area > 96^2 (9216 pixels)
-    """
-    SMALL = 1
-    MEDIUM = 2
-    LARGE = 3

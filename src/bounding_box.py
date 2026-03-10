@@ -3,18 +3,20 @@ from math import isclose
 from src.utils.general_utils import (convert_to_absolute_values,
                                      convert_to_relative_values)
 
-from .utils.enumerators import BBFormat, BBType, CoordinatesType, ObjectScale
-
-# COCO standard area thresholds (in pixels)
-COCO_SMALL_AREA_THRESHOLD = 32 ** 2   # 1024 pixels
-COCO_LARGE_AREA_THRESHOLD = 96 ** 2   # 9216 pixels
-
-# Standardized RGB colors for scale-based bounding box visualization
-SCALE_COLORS = {
-    ObjectScale.SMALL: (0, 255, 255),    # Cyan
-    ObjectScale.MEDIUM: (0, 255, 0),     # Green
-    ObjectScale.LARGE: (255, 0, 0),      # Red
-}
+from .utils.enumerators import BBFormat, BBType, CoordinatesType
+from .utils.object_scale import (
+    ObjectScale,
+    classify_scale,
+    get_scale_color_bgr,
+    get_scale_color_rgb,
+    get_scale_color_normalized,
+    get_scale_label,
+    get_area_range_for_scale,
+    ScaleStatistics,
+    compute_scale_statistics,
+    filter_boxes_by_scale,
+    group_boxes_by_scale,
+)
 
 
 class BoundingBox:
@@ -254,6 +256,80 @@ class BoundingBox:
         assert (self._y2 >= self._y)
         return (self._x2 - self._x + 1) * (self._y2 - self._y + 1)
 
+    def get_coco_area(self):
+        """
+        Get bounding box area using COCO's calculation method.
+        
+        COCO uses open-ended area calculation: (x2 - x1) * (y2 - y1)
+        without the +1 adjustment used in Pascal VOC.
+        
+        Returns:
+            float: Area in pixels using COCO convention.
+        """
+        return (self._x2 - self._x) * (self._y2 - self._y)
+
+    def get_scale(self) -> ObjectScale:
+        """
+        Get the COCO-standard scale classification for this bounding box.
+        
+        Uses COCO area calculation and thresholds:
+        - Small:  area <= 32^2 (1024 pixels)
+        - Medium: 32^2 < area <= 96^2 (9216 pixels)
+        - Large:  area > 96^2
+        
+        Returns:
+            ObjectScale: Scale category (SMALL, MEDIUM, LARGE, or UNKNOWN).
+        """
+        try:
+            area = self.get_coco_area()
+            return classify_scale(area)
+        except Exception:
+            return ObjectScale.UNKNOWN
+
+    def get_scale_color(self, color_format: str = 'rgb') -> tuple:
+        """
+        Get the color associated with this bounding box's scale category.
+        
+        Args:
+            color_format: Color format to return:
+                - 'rgb': Returns (R, G, B) with values 0-255
+                - 'bgr': Returns (B, G, R) with values 0-255 (OpenCV format)
+                - 'normalized': Returns (R, G, B) with values 0.0-1.0 (matplotlib)
+        
+        Returns:
+            tuple: Color values in the requested format.
+        """
+        scale = self.get_scale()
+        format_lower = (color_format or 'rgb').lower().strip()
+        
+        if format_lower == 'bgr':
+            return get_scale_color_bgr(scale)
+        elif format_lower == 'normalized':
+            return get_scale_color_normalized(scale)
+        else:
+            return get_scale_color_rgb(scale)
+
+    def get_scale_label(self) -> str:
+        """
+        Get human-readable label for this bounding box's scale category.
+        
+        Returns:
+            str: Human-readable scale description (e.g., "Small (≤32²px)").
+        """
+        return get_scale_label(self.get_scale())
+
+    def is_small(self) -> bool:
+        """Check if this bounding box is classified as small."""
+        return self.get_scale() == ObjectScale.SMALL
+
+    def is_medium(self) -> bool:
+        """Check if this bounding box is classified as medium."""
+        return self.get_scale() == ObjectScale.MEDIUM
+
+    def is_large(self) -> bool:
+        """Check if this bounding box is classified as large."""
+        return self.get_scale() == ObjectScale.LARGE
+
     def get_coordinates_type(self):
         """ Get type of the coordinates (CoordinatesType.RELATIVE or CoordinatesType.ABSOLUTE).
 
@@ -431,144 +507,72 @@ class BoundingBox:
         areas = [bb.get_area() for bb in bounding_boxes]
         return sum(areas) / len(areas)
 
-    def get_scale(self):
-        """ Get the COCO scale category based on absolute pixel area.
-
-        Returns
-        -------
-        ObjectScale
-            ObjectScale.SMALL if area <= 32^2 (1024 pixels)
-            ObjectScale.MEDIUM if 32^2 < area <= 96^2 (9216 pixels)
-            ObjectScale.LARGE if area > 96^2 (9216 pixels)
+    @staticmethod
+    def get_scale_statistics(bounding_boxes) -> ScaleStatistics:
         """
-        area = self.get_area()
-        if area <= COCO_SMALL_AREA_THRESHOLD:
-            return ObjectScale.SMALL
-        elif area <= COCO_LARGE_AREA_THRESHOLD:
-            return ObjectScale.MEDIUM
-        else:
-            return ObjectScale.LARGE
-
-    def get_scale_color(self):
-        """ Get the standardized RGB color for this bounding box based on its scale.
-
-        Returns
-        -------
-        tuple
-            RGB color tuple (R, G, B) where values are 0-255:
-            - Small: Cyan (0, 255, 255)
-            - Medium: Green (0, 255, 0)
-            - Large: Red (255, 0, 0)
+        Compute scale statistics for a list of bounding boxes.
+        
+        Args:
+            bounding_boxes: List of BoundingBox objects.
+        
+        Returns:
+            ScaleStatistics object with counts and statistics per scale category.
         """
-        return SCALE_COLORS[self.get_scale()]
+        return compute_scale_statistics(bounding_boxes)
 
     @staticmethod
-    def get_scale_color_for_area(area):
-        """ Get the standardized RGB color based on absolute pixel area.
-
-        Parameters
-        ----------
-        area : float
-            Absolute pixel area of the bounding box.
-
-        Returns
-        -------
-        tuple
-            RGB color tuple (R, G, B) where values are 0-255.
+    def filter_by_scale(bounding_boxes, scale: ObjectScale, include_unknown: bool = False):
         """
-        if area <= COCO_SMALL_AREA_THRESHOLD:
-            return SCALE_COLORS[ObjectScale.SMALL]
-        elif area <= COCO_LARGE_AREA_THRESHOLD:
-            return SCALE_COLORS[ObjectScale.MEDIUM]
-        else:
-            return SCALE_COLORS[ObjectScale.LARGE]
-
-    @staticmethod
-    def get_bounding_boxes_by_scale(bounding_boxes, scale):
-        """ Get bounding boxes filtered by scale category.
-
-        Parameters
-        ----------
-        bounding_boxes : list
-            List of BoundingBox objects.
-        scale : ObjectScale
-            The scale category to filter by.
-
-        Returns
-        -------
-        list
+        Filter bounding boxes to only include those of a specific scale.
+        
+        Args:
+            bounding_boxes: List of BoundingBox objects.
+            scale: ObjectScale to filter for (SMALL, MEDIUM, or LARGE).
+            include_unknown: If True, also include boxes with unknown scale.
+        
+        Returns:
             List of BoundingBox objects matching the specified scale.
         """
-        return [bb for bb in bounding_boxes if bb.get_scale() == scale]
+        return filter_boxes_by_scale(bounding_boxes, scale, include_unknown)
 
     @staticmethod
-    def get_scale_distribution(bounding_boxes):
-        """ Get the count of bounding boxes per scale category.
-
-        Parameters
-        ----------
-        bounding_boxes : list
-            List of BoundingBox objects.
-
-        Returns
-        -------
-        dict
-            Dictionary with ObjectScale keys and count values.
+    def group_by_scale(bounding_boxes):
         """
-        distribution = {
-            ObjectScale.SMALL: 0,
-            ObjectScale.MEDIUM: 0,
-            ObjectScale.LARGE: 0
-        }
-        for bb in bounding_boxes:
-            distribution[bb.get_scale()] += 1
-        return distribution
+        Group bounding boxes by their scale category.
+        
+        Args:
+            bounding_boxes: List of BoundingBox objects.
+        
+        Returns:
+            Dict[ObjectScale, List[BoundingBox]]: Boxes grouped by scale.
+        """
+        return group_boxes_by_scale(bounding_boxes)
 
     @staticmethod
-    def get_scale_statistics(bounding_boxes):
-        """ Get descriptive statistics for bounding boxes grouped by scale.
-
-        Parameters
-        ----------
-        bounding_boxes : list
-            List of BoundingBox objects.
-
-        Returns
-        -------
-        dict
-            Dictionary containing statistics for each scale category:
-            - count: number of bounding boxes
-            - total_area: sum of all areas
-            - avg_area: average area
-            - min_area: minimum area
-            - max_area: maximum area
-            - percentage: percentage of total bounding boxes
+    def get_amount_bounding_box_by_scale(bounding_boxes, reverse=False):
         """
-        total_count = len(bounding_boxes)
-        stats = {}
-
-        for scale in ObjectScale:
-            scale_bbs = BoundingBox.get_bounding_boxes_by_scale(bounding_boxes, scale)
-            count = len(scale_bbs)
-
+        Get the count of bounding boxes per scale category.
+        
+        Args:
+            bounding_boxes: List of BoundingBox objects.
+            reverse: If True, sort by count in descending order.
+        
+        Returns:
+            Dict[str, int]: Count of boxes per scale category name.
+        """
+        stats = compute_scale_statistics(bounding_boxes)
+        ret = {}
+        
+        for scale in [ObjectScale.SMALL, ObjectScale.MEDIUM, ObjectScale.LARGE]:
+            count = stats.get_count(scale)
             if count > 0:
-                areas = [bb.get_area() for bb in scale_bbs]
-                stats[scale] = {
-                    'count': count,
-                    'total_area': sum(areas),
-                    'avg_area': sum(areas) / count,
-                    'min_area': min(areas),
-                    'max_area': max(areas),
-                    'percentage': (count / total_count * 100) if total_count > 0 else 0
-                }
-            else:
-                stats[scale] = {
-                    'count': 0,
-                    'total_area': 0,
-                    'avg_area': 0,
-                    'min_area': 0,
-                    'max_area': 0,
-                    'percentage': 0
-                }
-
-        return stats
+                ret[scale.value] = count
+        
+        # Include unknown only if present
+        unknown_count = stats.get_count(ObjectScale.UNKNOWN)
+        if unknown_count > 0:
+            ret['unknown'] = unknown_count
+        
+        # Sort by count
+        ret = {k: v for k, v in sorted(ret.items(), key=lambda item: item[1], reverse=reverse)}
+        return ret

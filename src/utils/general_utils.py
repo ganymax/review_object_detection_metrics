@@ -1,11 +1,23 @@
 import fnmatch
 import os
+from typing import Dict, List, Optional, Tuple, Union
 
 import cv2
 import matplotlib.pyplot as plt
 import numpy as np
 from PyQt5 import QtCore, QtGui
-from src.utils.enumerators import BBFormat, ObjectScale
+from src.utils.enumerators import BBFormat
+from src.utils.object_scale import (
+    ObjectScale,
+    classify_scale,
+    get_scale_color_bgr,
+    get_scale_color_rgb,
+    get_scale_color_normalized,
+    get_scale_label,
+    ScaleStatistics,
+    SCALE_COLORS_BGR,
+    SCALE_COLORS_NORMALIZED,
+)
 
 
 def get_classes_from_txt_file(filepath_classes_det):
@@ -116,6 +128,211 @@ def add_bb_into_image(image, bb, color=(255, 0, 0), thickness=2, label=None):
         cv2.putText(image, label, (xin_bb, yin_bb), font, fontScale, (0, 0, 0), fontThickness,
                     cv2.LINE_AA)
     return image
+
+
+def add_bb_into_image_with_scale_color(
+    image,
+    bb,
+    thickness: int = 2,
+    label: Optional[str] = None,
+    show_scale_in_label: bool = True
+):
+    """
+    Add a bounding box to an image with color based on its COCO scale category.
+    
+    Colors:
+    - Small objects (≤32²px): Blue
+    - Medium objects (32²-96²px): Green
+    - Large objects (>96²px): Red
+    
+    Args:
+        image: OpenCV image (numpy array).
+        bb: BoundingBox object.
+        thickness: Line thickness for the bounding box.
+        label: Optional label text. If None, uses class_id.
+        show_scale_in_label: If True, appends scale category to label.
+    
+    Returns:
+        Image with bounding box drawn.
+    """
+    # Get scale-based color (BGR for OpenCV)
+    try:
+        scale = bb.get_scale()
+        color_bgr = get_scale_color_bgr(scale)
+    except Exception:
+        # Fallback: calculate area manually
+        try:
+            x1, y1, x2, y2 = bb.get_absolute_bounding_box(BBFormat.XYX2Y2)
+            area = (x2 - x1) * (y2 - y1)
+            scale = classify_scale(area)
+            color_bgr = get_scale_color_bgr(scale)
+        except Exception:
+            scale = ObjectScale.UNKNOWN
+            color_bgr = SCALE_COLORS_BGR[ObjectScale.UNKNOWN]
+    
+    # Build label
+    if label is None:
+        try:
+            label = str(bb.get_class_id())
+        except Exception:
+            label = ""
+    
+    if show_scale_in_label and label:
+        label = f"{label} [{scale.value}]"
+    elif show_scale_in_label:
+        label = f"[{scale.value}]"
+    
+    # Convert BGR to RGB for the existing function
+    color_rgb = (color_bgr[2], color_bgr[1], color_bgr[0])
+    
+    return add_bb_into_image(image, bb, color=color_rgb, thickness=thickness, label=label)
+
+
+def draw_bbs_with_scale_colors(
+    image,
+    bounding_boxes: List,
+    thickness: int = 2,
+    show_labels: bool = True,
+    show_scale_in_label: bool = True
+):
+    """
+    Draw multiple bounding boxes on an image with scale-based colors.
+    
+    Args:
+        image: OpenCV image (numpy array) or path to image file.
+        bounding_boxes: List of BoundingBox objects.
+        thickness: Line thickness.
+        show_labels: If True, show class labels.
+        show_scale_in_label: If True, append scale category to labels.
+    
+    Returns:
+        Image with all bounding boxes drawn.
+    """
+    if isinstance(image, str):
+        image = cv2.imread(image)
+        if image is None:
+            raise ValueError(f"Could not load image: {image}")
+    
+    # Make a copy to avoid modifying the original
+    result = image.copy()
+    
+    if not bounding_boxes:
+        return result
+    
+    for bb in bounding_boxes:
+        if bb is None:
+            continue
+        
+        label = None
+        if show_labels:
+            try:
+                label = str(bb.get_class_id())
+            except Exception:
+                label = None
+        
+        try:
+            result = add_bb_into_image_with_scale_color(
+                result,
+                bb,
+                thickness=thickness,
+                label=label,
+                show_scale_in_label=show_scale_in_label
+            )
+        except Exception:
+            # Skip boxes that can't be drawn
+            continue
+    
+    return result
+
+
+def create_scale_legend_image(
+    width: int = 300,
+    height: int = 120,
+    background_color: Tuple[int, int, int] = (255, 255, 255)
+) -> np.ndarray:
+    """
+    Create an image showing the scale color legend.
+    
+    Args:
+        width: Legend image width.
+        height: Legend image height.
+        background_color: Background color (BGR).
+    
+    Returns:
+        OpenCV image (numpy array) with the legend.
+    """
+    img = np.full((height, width, 3), background_color, dtype=np.uint8)
+    
+    font = cv2.FONT_HERSHEY_SIMPLEX
+    font_scale = 0.5
+    font_thickness = 1
+    
+    y_start = 25
+    y_step = 30
+    box_size = 20
+    x_box = 10
+    x_text = 40
+    
+    scales = [ObjectScale.SMALL, ObjectScale.MEDIUM, ObjectScale.LARGE]
+    
+    for i, scale in enumerate(scales):
+        y = y_start + i * y_step
+        color = SCALE_COLORS_BGR[scale]
+        
+        # Draw color box
+        cv2.rectangle(img, (x_box, y - box_size // 2), (x_box + box_size, y + box_size // 2), color, -1)
+        cv2.rectangle(img, (x_box, y - box_size // 2), (x_box + box_size, y + box_size // 2), (0, 0, 0), 1)
+        
+        # Draw label
+        label = get_scale_label(scale)
+        cv2.putText(img, label, (x_text, y + 5), font, font_scale, (0, 0, 0), font_thickness, cv2.LINE_AA)
+    
+    return img
+
+
+def add_scale_legend_to_image(
+    image,
+    position: str = 'top-right',
+    margin: int = 10
+) -> np.ndarray:
+    """
+    Add a scale color legend overlay to an image.
+    
+    Args:
+        image: OpenCV image (numpy array).
+        position: Legend position ('top-right', 'top-left', 'bottom-right', 'bottom-left').
+        margin: Margin from image edge.
+    
+    Returns:
+        Image with legend overlay.
+    """
+    result = image.copy()
+    legend = create_scale_legend_image()
+    
+    lh, lw = legend.shape[:2]
+    ih, iw = result.shape[:2]
+    
+    # Calculate position
+    pos_lower = (position or 'top-right').lower().strip()
+    
+    if 'left' in pos_lower:
+        x = margin
+    else:  # right
+        x = iw - lw - margin
+    
+    if 'bottom' in pos_lower:
+        y = ih - lh - margin
+    else:  # top
+        y = margin
+    
+    # Ensure we don't go out of bounds
+    x = max(0, min(x, iw - lw))
+    y = max(0, min(y, ih - lh))
+    
+    # Blend legend onto image
+    result[y:y + lh, x:x + lw] = cv2.addWeighted(result[y:y + lh, x:x + lw], 0.3, legend, 0.7, 0)
+    
+    return result
 
 
 def remove_file_extension(filename):
@@ -273,94 +490,267 @@ def plot_bb_per_classes(dict_bbs_per_class,
     title = f'Distribution of bounding boxes per class {extra_title}'
     plt.title(title)
     if show:
-        # plt.tight_layout()
-        # plt.show(aspect='auto')
         fig = plt.gcf()
-        fig.canvas.set_window_title(title)
+        # Use manager.set_window_title for matplotlib >= 3.4, fallback to canvas for older versions
+        if hasattr(fig.canvas.manager, 'set_window_title'):
+            fig.canvas.manager.set_window_title(title)
+        elif hasattr(fig.canvas, 'set_window_title'):
+            fig.canvas.set_window_title(title)
         fig.tight_layout()
         fig.show()
     return plt
 
 
-def add_bb_into_image_by_scale(image, bb, thickness=2, label=None):
-    """ Draw a bounding box into an image using scale-based color coding.
-
-    Parameters
-    ----------
-    image : numpy.ndarray
-        The image to draw on.
-    bb : BoundingBox
-        The bounding box to draw.
-    thickness : int
-        Line thickness for the rectangle.
-    label : str, optional
-        Label text to display.
-
-    Returns
-    -------
-    numpy.ndarray
-        The image with the bounding box drawn.
+def plot_bb_per_scale(
+    bounding_boxes: List,
+    show: bool = False,
+    save_path: Optional[str] = None,
+    extra_title: str = '',
+    use_scale_colors: bool = True
+):
     """
-    color = bb.get_scale_color()
-    return add_bb_into_image(image, bb, color=color, thickness=thickness, label=label)
-
-
-def plot_bb_per_scale(dict_bbs_per_scale,
-                      horizontally=True,
-                      rotation=0,
-                      show=False,
-                      extra_title=''):
-    """ Plot distribution of bounding boxes per scale category with COCO-standard colors.
-
-    Parameters
-    ----------
-    dict_bbs_per_scale : dict
-        Dictionary with ObjectScale keys and count values.
-    horizontally : bool
-        If True, plot horizontal bars; otherwise vertical.
-    rotation : int
-        Rotation angle for x-axis labels.
-    show : bool
-        If True, display the plot.
-    extra_title : str
-        Additional text to append to the title.
-
-    Returns
-    -------
-    matplotlib.pyplot
-        The pyplot object.
+    Plot bounding box distribution by COCO scale category.
+    
+    Args:
+        bounding_boxes: List of BoundingBox objects.
+        show: If True, display the plot.
+        save_path: If provided, save plot to this path.
+        extra_title: Additional text to append to title.
+        use_scale_colors: If True, use scale-specific colors for bars.
+    
+    Returns:
+        matplotlib pyplot object.
     """
-    from src.bounding_box import SCALE_COLORS
-
     plt.close()
-
-    scale_names = ['Small', 'Medium', 'Large']
-    scale_keys = [ObjectScale.SMALL, ObjectScale.MEDIUM, ObjectScale.LARGE]
-    counts = [dict_bbs_per_scale.get(k, 0) for k in scale_keys]
-
-    colors = [
-        tuple(c / 255 for c in SCALE_COLORS[k]) for k in scale_keys
-    ]
-
-    if horizontally:
-        ypos = np.arange(len(scale_names))
-        plt.barh(ypos, counts, color=colors)
-        plt.yticks(ypos, scale_names)
-        plt.xlabel('amount of bounding boxes')
-        plt.ylabel('scale category')
+    
+    # Compute statistics
+    stats = ScaleStatistics()
+    for bb in bounding_boxes or []:
+        if bb is None:
+            continue
+        try:
+            area = bb.get_area()
+            stats.add_box(area)
+        except Exception:
+            stats.add_box(None)
+    
+    # Prepare data
+    scales = [ObjectScale.SMALL, ObjectScale.MEDIUM, ObjectScale.LARGE]
+    labels = [get_scale_label(s) for s in scales]
+    counts = [stats.get_count(s) for s in scales]
+    percentages = [stats.get_percentage(s) for s in scales]
+    
+    if use_scale_colors:
+        colors = [SCALE_COLORS_NORMALIZED[s] for s in scales]
     else:
-        plt.bar(scale_names, counts, color=colors)
-        plt.xlabel('scale category')
-        plt.ylabel('amount of bounding boxes')
-
-    plt.xticks(rotation=rotation)
-    title = f'Distribution of bounding boxes per scale (COCO standard) {extra_title}'
-    plt.title(title)
-
+        colors = None
+    
+    # Create figure with two subplots
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 5))
+    
+    # Bar chart of counts
+    bars = ax1.bar(labels, counts, color=colors, edgecolor='black')
+    ax1.set_xlabel('Scale Category')
+    ax1.set_ylabel('Count')
+    ax1.set_title(f'Bounding Box Count by Scale {extra_title}')
+    
+    # Add count labels on bars
+    for bar, count in zip(bars, counts):
+        height = bar.get_height()
+        ax1.annotate(f'{count}',
+                     xy=(bar.get_x() + bar.get_width() / 2, height),
+                     xytext=(0, 3),
+                     textcoords="offset points",
+                     ha='center', va='bottom')
+    
+    # Pie chart of distribution
+    if sum(counts) > 0:
+        ax2.pie(counts, labels=labels, autopct='%1.1f%%', colors=colors, startangle=90)
+        ax2.set_title(f'Scale Distribution {extra_title}')
+    else:
+        ax2.text(0.5, 0.5, 'No data', ha='center', va='center', transform=ax2.transAxes)
+        ax2.set_title(f'Scale Distribution {extra_title}')
+    
+    plt.tight_layout()
+    
+    if save_path:
+        plt.savefig(save_path, dpi=150, bbox_inches='tight')
+    
     if show:
-        fig = plt.gcf()
-        fig.canvas.set_window_title(title)
-        fig.tight_layout()
-        fig.show()
+        plt.show()
+    
+    return plt
 
+
+def plot_scale_comparison(
+    gt_bbs: List,
+    det_bbs: List,
+    show: bool = False,
+    save_path: Optional[str] = None,
+    title: str = 'Scale Distribution: Ground Truth vs Detections'
+):
+    """
+    Plot comparison of scale distributions between ground truth and detections.
+    
+    Args:
+        gt_bbs: List of ground truth BoundingBox objects.
+        det_bbs: List of detected BoundingBox objects.
+        show: If True, display the plot.
+        save_path: If provided, save plot to this path.
+        title: Plot title.
+    
+    Returns:
+        matplotlib pyplot object.
+    """
+    plt.close()
+    
+    # Compute statistics for both
+    gt_stats = ScaleStatistics()
+    det_stats = ScaleStatistics()
+    
+    for bb in gt_bbs or []:
+        if bb is None:
+            continue
+        try:
+            gt_stats.add_box(bb.get_area())
+        except Exception:
+            gt_stats.add_box(None)
+    
+    for bb in det_bbs or []:
+        if bb is None:
+            continue
+        try:
+            det_stats.add_box(bb.get_area())
+        except Exception:
+            det_stats.add_box(None)
+    
+    scales = [ObjectScale.SMALL, ObjectScale.MEDIUM, ObjectScale.LARGE]
+    labels = ['Small', 'Medium', 'Large']
+    
+    gt_counts = [gt_stats.get_count(s) for s in scales]
+    det_counts = [det_stats.get_count(s) for s in scales]
+    
+    x = np.arange(len(labels))
+    width = 0.35
+    
+    fig, ax = plt.subplots(figsize=(10, 6))
+    
+    bars1 = ax.bar(x - width / 2, gt_counts, width, label='Ground Truth', color='steelblue', edgecolor='black')
+    bars2 = ax.bar(x + width / 2, det_counts, width, label='Detections', color='coral', edgecolor='black')
+    
+    ax.set_xlabel('Scale Category')
+    ax.set_ylabel('Count')
+    ax.set_title(title)
+    ax.set_xticks(x)
+    ax.set_xticklabels(labels)
+    ax.legend()
+    
+    # Add value labels on bars
+    def add_labels(bars):
+        for bar in bars:
+            height = bar.get_height()
+            ax.annotate(f'{int(height)}',
+                        xy=(bar.get_x() + bar.get_width() / 2, height),
+                        xytext=(0, 3),
+                        textcoords="offset points",
+                        ha='center', va='bottom', fontsize=9)
+    
+    add_labels(bars1)
+    add_labels(bars2)
+    
+    plt.tight_layout()
+    
+    if save_path:
+        plt.savefig(save_path, dpi=150, bbox_inches='tight')
+    
+    if show:
+        plt.show()
+    
+    return plt
+
+
+def plot_scale_metrics(
+    scale_metrics: Dict,
+    show: bool = False,
+    save_path: Optional[str] = None,
+    title: str = 'Detection Performance by Scale'
+):
+    """
+    Plot precision, recall, and F1 score by scale category.
+    
+    Args:
+        scale_metrics: Dictionary from get_coco_summary_with_scale_details()['scale_metrics'].
+        show: If True, display the plot.
+        save_path: If provided, save plot to this path.
+        title: Plot title.
+    
+    Returns:
+        matplotlib pyplot object.
+    """
+    plt.close()
+    
+    if not scale_metrics:
+        fig, ax = plt.subplots(figsize=(8, 6))
+        ax.text(0.5, 0.5, 'No metrics data', ha='center', va='center', transform=ax.transAxes)
+        ax.set_title(title)
+        return plt
+    
+    scales = ['small', 'medium', 'large']
+    labels = ['Small', 'Medium', 'Large']
+    
+    precision = []
+    recall = []
+    f1 = []
+    
+    for scale in scales:
+        if scale in scale_metrics:
+            precision.append(scale_metrics[scale].get('precision', 0))
+            recall.append(scale_metrics[scale].get('recall', 0))
+            f1.append(scale_metrics[scale].get('f1_score', 0))
+        else:
+            precision.append(0)
+            recall.append(0)
+            f1.append(0)
+    
+    x = np.arange(len(labels))
+    width = 0.25
+    
+    fig, ax = plt.subplots(figsize=(10, 6))
+    
+    bars1 = ax.bar(x - width, precision, width, label='Precision', color='steelblue', edgecolor='black')
+    bars2 = ax.bar(x, recall, width, label='Recall', color='coral', edgecolor='black')
+    bars3 = ax.bar(x + width, f1, width, label='F1 Score', color='seagreen', edgecolor='black')
+    
+    ax.set_xlabel('Scale Category')
+    ax.set_ylabel('Score')
+    ax.set_title(title)
+    ax.set_xticks(x)
+    ax.set_xticklabels(labels)
+    ax.set_ylim(0, 1.1)
+    ax.legend()
+    ax.grid(axis='y', alpha=0.3)
+    
+    # Add value labels
+    def add_labels(bars):
+        for bar in bars:
+            height = bar.get_height()
+            if height > 0:
+                ax.annotate(f'{height:.2f}',
+                            xy=(bar.get_x() + bar.get_width() / 2, height),
+                            xytext=(0, 3),
+                            textcoords="offset points",
+                            ha='center', va='bottom', fontsize=8)
+    
+    add_labels(bars1)
+    add_labels(bars2)
+    add_labels(bars3)
+    
+    plt.tight_layout()
+    
+    if save_path:
+        plt.savefig(save_path, dpi=150, bbox_inches='tight')
+    
+    if show:
+        plt.show()
+    
     return plt
