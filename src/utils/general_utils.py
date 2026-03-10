@@ -470,12 +470,58 @@ def draw_bb_into_image(image, boundingBox, color, thickness, label=None):
     return image
 
 
+def _set_figure_window_title(fig, title):
+    """
+    Set the window title for a matplotlib figure.
+    Handles compatibility across different matplotlib versions.
+    """
+    if fig is None:
+        return
+    
+    try:
+        # Matplotlib 3.4+ uses fig.canvas.manager.set_window_title
+        if hasattr(fig.canvas, 'manager') and fig.canvas.manager is not None:
+            if hasattr(fig.canvas.manager, 'set_window_title'):
+                fig.canvas.manager.set_window_title(title)
+                return
+        
+        # Older matplotlib versions use fig.canvas.set_window_title
+        if hasattr(fig.canvas, 'set_window_title'):
+            fig.canvas.set_window_title(title)
+            return
+        
+        # Fallback: try using the window method directly
+        if hasattr(fig.canvas, 'manager') and fig.canvas.manager is not None:
+            if hasattr(fig.canvas.manager, 'window'):
+                window = fig.canvas.manager.window
+                if hasattr(window, 'setWindowTitle'):
+                    window.setWindowTitle(title)
+                elif hasattr(window, 'set_title'):
+                    window.set_title(title)
+    except Exception:
+        # If all methods fail, silently ignore
+        pass
+
+
 def plot_bb_per_classes(dict_bbs_per_class,
                         horizontally=True,
                         rotation=0,
                         show=False,
                         extra_title=''):
     plt.close()
+    
+    # Handle empty input gracefully
+    if dict_bbs_per_class is None or len(dict_bbs_per_class) == 0:
+        fig, ax = plt.subplots()
+        ax.text(0.5, 0.5, 'No data to display', ha='center', va='center', transform=ax.transAxes)
+        title = f'Distribution of bounding boxes per class {extra_title}'
+        ax.set_title(title)
+        if show:
+            _set_figure_window_title(fig, title)
+            fig.tight_layout()
+            plt.show()
+        return plt
+    
     if horizontally:
         ypos = np.arange(len(dict_bbs_per_class.keys()))
         plt.barh(ypos, dict_bbs_per_class.values())
@@ -491,10 +537,8 @@ def plot_bb_per_classes(dict_bbs_per_class,
     plt.title(title)
     if show:
         fig = plt.gcf()
+        _set_figure_window_title(fig, title)
         fig.tight_layout()
-        # Use manager.set_window_title for matplotlib >= 3.4 compatibility
-        if hasattr(fig.canvas, 'manager') and fig.canvas.manager is not None:
-            fig.canvas.manager.set_window_title(title)
         plt.show()
     return plt
 

@@ -190,6 +190,69 @@ These three metrics, also referred to as AP Across Scales, apply the AP@[.5,.05:
 
 When evaluating objects of a given size, objects of the other sizes (both ground-truth and predicted) are not considered in the evaluation. This metric is also part of the COCO evaluation dataset.
 
+### Scale-Based Bounding Box Classification and Visualization
+
+This toolkit provides comprehensive support for COCO-standard scale-based object classification:
+
+| Scale Category | Area Threshold | Color Code |
+|:--------------|:---------------|:-----------|
+| **Small** | area ≤ 32² pixels (1024 px) | Blue |
+| **Medium** | 32² < area ≤ 96² pixels (1024-9216 px) | Green |
+| **Large** | area > 96² pixels (9216 px) | Red |
+
+#### Features
+
+- **Automatic Scale Classification**: Every bounding box is automatically classified into small, medium, or large based on its pixel area following COCO standards.
+- **Scale-Based Color Coding**: The GUI image viewer displays bounding boxes with colors indicating their scale category, making it easy to visually identify object sizes.
+- **Scale Distribution Statistics**: The statistics panel shows the distribution of bounding boxes across scale categories.
+- **Scale Distribution Plotting**: Plot the distribution of bounding boxes per scale category using bar charts and pie charts.
+- **Detailed Scale Metrics**: Get precision, recall, and F1 scores broken down by scale category.
+
+#### Programmatic Usage
+
+```python
+from src.bounding_box import BoundingBox
+from src.utils.object_scale import ObjectScale
+
+# Get scale for a single bounding box
+bb = BoundingBox(...)
+scale = bb.get_scale()  # Returns ObjectScale.SMALL, MEDIUM, or LARGE
+is_small = bb.is_small()  # True if area <= 32^2
+
+# Get scale-based color for visualization
+rgb_color = bb.get_scale_color('rgb')  # (R, G, B) tuple
+bgr_color = bb.get_scale_color('bgr')  # For OpenCV
+
+# Get scale statistics for a list of bounding boxes
+stats = BoundingBox.get_scale_statistics(bounding_boxes)
+print(stats)  # Shows count and percentage per scale
+
+# Filter boxes by scale
+small_boxes = BoundingBox.filter_by_scale(bounding_boxes, ObjectScale.SMALL)
+medium_boxes = BoundingBox.filter_by_scale(bounding_boxes, ObjectScale.MEDIUM)
+
+# Group boxes by scale
+groups = BoundingBox.group_by_scale(bounding_boxes)
+# groups[ObjectScale.SMALL], groups[ObjectScale.MEDIUM], groups[ObjectScale.LARGE]
+```
+
+#### Extended COCO Metrics with Scale Analysis
+
+```python
+from src.evaluators.coco_evaluator import (
+    get_coco_summary_with_scale_details,
+    format_scale_metrics_report
+)
+
+# Get detailed scale-based metrics
+summary = get_coco_summary_with_scale_details(gt_boxes, det_boxes)
+# Includes: standard COCO metrics + scale distributions + per-scale precision/recall/F1
+
+# Generate a formatted report
+report = format_scale_metrics_report(gt_boxes, det_boxes)
+print(report)
+```
+
 
 ## **Spatio-Temporal Tube Average Precision (STT-AP)**
 When dealing with videos, one may be interested in evaluating the model performance at  video level, i.e., whether the object was detected in the video as a whole. This metric is an extension of the AP metric that integrates spatial and temporal localizations; it is concise, yet expressive.
@@ -250,6 +313,18 @@ Visualize the statistics of your dataset (Options #5 and #9: Ground-truth and de
 </p>
 
 You can also save the images and plot a bar plot with the distribution of the boxes per class.
+
+#### Scale-Based Visualization in Statistics Dialog
+
+The statistics dialog now includes COCO scale-based features:
+
+- **Scale Distribution Statistics**: The statistics panel displays the count of bounding boxes per scale category (small, medium, large).
+- **Scale-Based Color Coding**: Bounding boxes in the image viewer are automatically color-coded by their scale:
+  - **Blue**: Small objects (area ≤ 32² pixels)
+  - **Green**: Medium objects (32² < area ≤ 96² pixels)  
+  - **Red**: Large objects (area > 96² pixels)
+- **Scale Legend**: A color legend is displayed on the image and at the bottom of the dialog.
+- **Plot Scale Distribution**: Click "plot bounding boxes per scale" to visualize the scale distribution with bar and pie charts.
 
 #### Spatio-Temporal Tube
 
