@@ -1,5 +1,8 @@
 from enum import Enum
 
+# Re-export ObjectScale from object_scale module for convenient access
+from src.utils.object_scale import ObjectScale
+
 
 class MethodAveragePrecision(Enum):
     """
