@@ -490,12 +490,10 @@ def plot_bb_per_classes(dict_bbs_per_class,
     title = f'Distribution of bounding boxes per class {extra_title}'
     plt.title(title)
     if show:
+        # plt.tight_layout()
+        # plt.show(aspect='auto')
         fig = plt.gcf()
-        # Use manager.set_window_title for matplotlib >= 3.4, fallback to canvas for older versions
-        if hasattr(fig.canvas.manager, 'set_window_title'):
-            fig.canvas.manager.set_window_title(title)
-        elif hasattr(fig.canvas, 'set_window_title'):
-            fig.canvas.set_window_title(title)
+        fig.canvas.set_window_title(title)
         fig.tight_layout()
         fig.show()
     return plt
