@@ -23,6 +23,7 @@ from src.utils.enumerators import BBType
 from src.utils.general_utils import (
     add_bb_into_image,
     add_bb_into_image_with_scale_color,
+    add_bb_into_image_with_bias_marker,
     get_files_dir,
     remove_file_extension,
     show_image_in_qt_component,
@@ -176,11 +177,11 @@ class Details_Dialog(QMainWindow, Details_UI):
         
         Bounding boxes are colored according to their COCO scale category:
         - Small (area ≤ 32²px): Blue RGB(100, 100, 255)
-        - Medium (32²px < area ≤ 96²px): Green RGB(100, 255, 100)
-        - Large (area > 96²px): Red RGB(255, 100, 100)
+        - Medium (32²px < area ≤ 96²px): Green RGB(100, 255, 100) + bias marker
+        - Large (area > 96²px): Red RGB(255, 100, 100) + bias marker
         
-        The scale category is determined by the absolute pixel area of each
-        bounding box, following the COCO evaluation standard.
+        Medium and Large boxes include a crosshair marker showing the center of
+        gravity of the dominant color within the bounding box (bias profiling).
         
         Returns:
             numpy.ndarray: Image with bounding boxes drawn in scale-based colors.
@@ -193,21 +194,19 @@ class Details_Dialog(QMainWindow, Details_UI):
         img_name = self.image_files[self.selected_image_index]
         img_name = general_utils.get_file_name_only(img_name)
         
-        # Add ground truth bounding boxes with scale-based colors
+        # Add ground truth bounding boxes with scale-based colors and bias markers
         if self.chb_gt_bb.isChecked() and self.gt_annotations is not None:
             bboxes = BoundingBox.get_bounding_boxes_by_image_name(self.gt_annotations, img_name)
-            # Draw bounding boxes with COCO scale-based colors
             for bb in bboxes:
-                img = add_bb_into_image_with_scale_color(
+                img = add_bb_into_image_with_bias_marker(
                     img, bb, thickness=2, label=None, show_scale_in_label=False
                 )
         
-        # Add detection bounding boxes with scale-based colors
+        # Add detection bounding boxes with scale-based colors and bias markers
         if self.chb_det_bb.isChecked() and self.det_annotations is not None:
             bboxes = BoundingBox.get_bounding_boxes_by_image_name(self.det_annotations, img_name)
-            # Draw bounding boxes with COCO scale-based colors
             for bb in bboxes:
-                img = add_bb_into_image_with_scale_color(
+                img = add_bb_into_image_with_bias_marker(
                     img, bb, thickness=2, label=None, show_scale_in_label=False
                 )
         

@@ -20,7 +20,19 @@ from src.utils.object_scale import (
     group_boxes_by_scale,
 )
 
+# Export color analysis utilities for bias profiling
+from src.utils.color_analysis import (
+    ColorAnalysisResult,
+    extract_dominant_color,
+    create_color_mask,
+    calculate_center_of_gravity,
+    analyze_bounding_box_color,
+    should_analyze_bounding_box,
+    get_contrasting_border_color,
+)
+
 __all__ = [
+    # Scale utilities
     'ObjectScale',
     'COCO_SCALE_THRESHOLDS',
     'SCALE_COLORS_BGR',
@@ -39,4 +51,12 @@ __all__ = [
     'compute_scale_statistics',
     'filter_boxes_by_scale',
     'group_boxes_by_scale',
+    # Color analysis utilities
+    'ColorAnalysisResult',
+    'extract_dominant_color',
+    'create_color_mask',
+    'calculate_center_of_gravity',
+    'analyze_bounding_box_color',
+    'should_analyze_bounding_box',
+    'get_contrasting_border_color',
 ]
