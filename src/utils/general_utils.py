@@ -18,12 +18,6 @@ from src.utils.object_scale import (
     SCALE_COLORS_BGR,
     SCALE_COLORS_NORMALIZED,
 )
-from src.utils.color_analysis import (
-    analyze_bounding_box_color,
-    should_analyze_bounding_box,
-    get_contrasting_border_color,
-    ColorAnalysisResult,
-)
 
 
 def get_classes_from_txt_file(filepath_classes_det):
@@ -141,7 +135,10 @@ def add_bb_into_image_with_scale_color(
     bb,
     thickness: int = 2,
     label: Optional[str] = None,
-    show_scale_in_label: bool = True
+    show_scale_in_label: bool = True,
+    show_color_marker: bool = False,
+    marker_size: int = 8,
+    color_tolerance: int = 40
 ):
     """
     Add a bounding box to an image with color based on its COCO scale category.
@@ -157,6 +154,9 @@ def add_bb_into_image_with_scale_color(
         thickness: Line thickness for the bounding box.
         label: Optional label text. If None, uses class_id.
         show_scale_in_label: If True, appends scale category to label.
+        show_color_marker: If True, draw dominant color crosshair for medium/large boxes.
+        marker_size: Size of the crosshair marker.
+        color_tolerance: Tolerance for color matching in bias analysis.
     
     Returns:
         Image with bounding box drawn.
@@ -191,7 +191,23 @@ def add_bb_into_image_with_scale_color(
     # Convert BGR to RGB for the existing function
     color_rgb = (color_bgr[2], color_bgr[1], color_bgr[0])
     
-    return add_bb_into_image(image, bb, color=color_rgb, thickness=thickness, label=label)
+    result = add_bb_into_image(image, bb, color=color_rgb, thickness=thickness, label=label)
+    
+    # Add color marker for medium and large boxes if requested
+    if show_color_marker and scale in (ObjectScale.MEDIUM, ObjectScale.LARGE):
+        from src.utils.color_analysis import analyze_bounding_box_from_bb, draw_crosshair_marker
+        analysis = analyze_bounding_box_from_bb(result, bb, color_tolerance)
+        if analysis is not None:
+            draw_crosshair_marker(
+                result,
+                analysis.center_of_gravity,
+                analysis.dominant_color_bgr,
+                analysis.contrasting_color_bgr,
+                size=marker_size,
+                thickness=2
+            )
+    
+    return result
 
 
 def draw_bbs_with_scale_colors(
@@ -199,7 +215,10 @@ def draw_bbs_with_scale_colors(
     bounding_boxes: List,
     thickness: int = 2,
     show_labels: bool = True,
-    show_scale_in_label: bool = True
+    show_scale_in_label: bool = True,
+    show_color_marker: bool = False,
+    marker_size: int = 8,
+    color_tolerance: int = 40
 ):
     """
     Draw multiple bounding boxes on an image with scale-based colors.
@@ -210,6 +229,9 @@ def draw_bbs_with_scale_colors(
         thickness: Line thickness.
         show_labels: If True, show class labels.
         show_scale_in_label: If True, append scale category to labels.
+        show_color_marker: If True, draw dominant color crosshair for medium/large boxes.
+        marker_size: Size of the crosshair marker.
+        color_tolerance: Tolerance for color matching in bias analysis.
     
     Returns:
         Image with all bounding boxes drawn.
@@ -242,7 +264,10 @@ def draw_bbs_with_scale_colors(
                 bb,
                 thickness=thickness,
                 label=label,
-                show_scale_in_label=show_scale_in_label
+                show_scale_in_label=show_scale_in_label,
+                show_color_marker=show_color_marker,
+                marker_size=marker_size,
+                color_tolerance=color_tolerance
             )
         except Exception:
             # Skip boxes that can't be drawn
@@ -802,186 +827,3 @@ def plot_scale_metrics(
         plt.show()
     
     return plt
-
-
-def draw_crosshair_marker(
-    image: np.ndarray,
-    center: Tuple[float, float],
-    fill_color: Tuple[int, int, int],
-    size: int = 10,
-    thickness: int = 2
-) -> np.ndarray:
-    """
-    Draw a crosshair marker at the specified location.
-    
-    The marker has a contrasting border (black or white) to ensure visibility
-    against any background.
-    
-    Args:
-        image: Image to draw on (modified in place).
-        center: (x, y) coordinates for the crosshair center.
-        fill_color: RGB color for the crosshair fill.
-        size: Half-length of the crosshair arms in pixels.
-        thickness: Line thickness in pixels.
-    
-    Returns:
-        The modified image.
-    """
-    cx, cy = int(round(center[0])), int(round(center[1]))
-    
-    # Ensure center is within image bounds
-    h, w = image.shape[:2]
-    if cx < 0 or cx >= w or cy < 0 or cy >= h:
-        return image
-    
-    # Get contrasting border color
-    border_color = get_contrasting_border_color(fill_color)
-    
-    # Convert RGB to BGR for OpenCV
-    fill_bgr = (fill_color[2], fill_color[1], fill_color[0])
-    border_bgr = (border_color[2], border_color[1], border_color[0])
-    
-    # Calculate line endpoints (clipped to image bounds)
-    x1 = max(0, cx - size)
-    x2 = min(w - 1, cx + size)
-    y1 = max(0, cy - size)
-    y2 = min(h - 1, cy + size)
-    
-    border_thickness = thickness + 2
-    
-    # Draw border (thicker, behind)
-    cv2.line(image, (x1, cy), (x2, cy), border_bgr, border_thickness)
-    cv2.line(image, (cx, y1), (cx, y2), border_bgr, border_thickness)
-    
-    # Draw fill (thinner, on top)
-    cv2.line(image, (x1, cy), (x2, cy), fill_bgr, thickness)
-    cv2.line(image, (cx, y1), (cx, y2), fill_bgr, thickness)
-    
-    # Draw center circle with border
-    circle_radius = max(2, thickness)
-    cv2.circle(image, (cx, cy), circle_radius + 1, border_bgr, -1)
-    cv2.circle(image, (cx, cy), circle_radius, fill_bgr, -1)
-    
-    return image
-
-
-def add_bb_into_image_with_bias_marker(
-    image: np.ndarray,
-    bb,
-    thickness: int = 2,
-    label: Optional[str] = None,
-    show_scale_in_label: bool = True,
-    crosshair_size: int = 10
-) -> np.ndarray:
-    """
-    Add a bounding box to an image with scale-based color and bias profiling marker.
-    
-    For Medium and Large boxes, this also draws a crosshair marker at the center
-    of gravity of the dominant color within the bounding box ROI.
-    Small boxes are drawn without the marker.
-    
-    Args:
-        image: OpenCV image (numpy array) in RGB format.
-        bb: BoundingBox object.
-        thickness: Line thickness for the bounding box.
-        label: Optional label text.
-        show_scale_in_label: If True, appends scale category to label.
-        crosshair_size: Size of crosshair arms in pixels.
-    
-    Returns:
-        Image with bounding box and optional bias marker drawn.
-    """
-    # First draw the standard bounding box with scale color
-    result = add_bb_into_image_with_scale_color(
-        image, bb, thickness=thickness, label=label, show_scale_in_label=show_scale_in_label
-    )
-    
-    # Check if we should add bias marker (Medium/Large only)
-    try:
-        x1, y1, x2, y2 = bb.get_absolute_bounding_box(BBFormat.XYX2Y2)
-        area = (x2 - x1) * (y2 - y1)
-        
-        if not should_analyze_bounding_box(area):
-            return result
-        
-        # Analyze color within bounding box
-        bbox_coords = (int(x1), int(y1), int(x2), int(y2))
-        analysis = analyze_bounding_box_color(result, bbox_coords)
-        
-        if analysis is not None:
-            # Draw crosshair at center of gravity
-            result = draw_crosshair_marker(
-                result,
-                center=analysis.center_of_gravity_absolute,
-                fill_color=analysis.dominant_color_rgb,
-                size=crosshair_size,
-                thickness=max(1, thickness - 1)
-            )
-    except Exception:
-        # If analysis fails, just return the image with the basic bounding box
-        pass
-    
-    return result
-
-
-def draw_bbs_with_bias_markers(
-    image: np.ndarray,
-    bounding_boxes: List,
-    thickness: int = 2,
-    show_labels: bool = True,
-    show_scale_in_label: bool = True,
-    crosshair_size: int = 10
-) -> np.ndarray:
-    """
-    Draw multiple bounding boxes on an image with scale-based colors and bias markers.
-    
-    Medium and Large boxes include a crosshair marker showing the center of gravity
-    of the dominant color within each bounding box. Small boxes are drawn without markers.
-    
-    Args:
-        image: OpenCV image (numpy array) or path to image file.
-        bounding_boxes: List of BoundingBox objects.
-        thickness: Line thickness.
-        show_labels: If True, show class labels.
-        show_scale_in_label: If True, append scale category to labels.
-        crosshair_size: Size of crosshair arms in pixels.
-    
-    Returns:
-        Image with all bounding boxes and bias markers drawn.
-    """
-    if isinstance(image, str):
-        image = cv2.imread(image)
-        if image is None:
-            raise ValueError(f"Could not load image: {image}")
-        image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-    
-    result = image.copy()
-    
-    if not bounding_boxes:
-        return result
-    
-    for bb in bounding_boxes:
-        if bb is None:
-            continue
-        
-        label = None
-        if show_labels:
-            try:
-                label = str(bb.get_class_id())
-            except Exception:
-                label = None
-        
-        try:
-            result = add_bb_into_image_with_bias_marker(
-                result,
-                bb,
-                thickness=thickness,
-                label=label,
-                show_scale_in_label=show_scale_in_label,
-                crosshair_size=crosshair_size
-            )
-        except Exception:
-            # Skip boxes that can't be drawn
-            continue
-    
-    return result

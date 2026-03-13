@@ -23,12 +23,14 @@ from src.utils.object_scale import (
 # Export color analysis utilities for bias profiling
 from src.utils.color_analysis import (
     ColorAnalysisResult,
-    extract_dominant_color,
+    extract_roi,
+    find_dominant_color,
     create_color_mask,
     calculate_center_of_gravity,
     analyze_bounding_box_color,
-    should_analyze_bounding_box,
-    get_contrasting_border_color,
+    analyze_bounding_box_from_bb,
+    draw_crosshair_marker,
+    add_color_marker_to_bb,
 )
 
 __all__ = [
@@ -53,10 +55,12 @@ __all__ = [
     'group_boxes_by_scale',
     # Color analysis utilities
     'ColorAnalysisResult',
-    'extract_dominant_color',
+    'extract_roi',
+    'find_dominant_color',
     'create_color_mask',
     'calculate_center_of_gravity',
     'analyze_bounding_box_color',
-    'should_analyze_bounding_box',
-    'get_contrasting_border_color',
+    'analyze_bounding_box_from_bb',
+    'draw_crosshair_marker',
+    'add_color_marker_to_bb',
 ]

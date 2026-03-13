@@ -8,6 +8,7 @@ This module provides the Details_Dialog class which displays:
   - Medium objects (32²-96²px): Green  
   - Large objects (>96²px): Red
 - Scale distribution statistics and plotting
+- Bias profiling with dominant color markers for medium/large boxes
 """
 
 import os
@@ -15,7 +16,7 @@ import random
 
 import cv2
 import matplotlib.pyplot as plt
-from PyQt5.QtWidgets import QFileDialog, QMainWindow
+from PyQt5.QtWidgets import QFileDialog, QMainWindow, QCheckBox
 from src.bounding_box import BoundingBox
 from src.ui.details_ui import Ui_Dialog as Details_UI
 from src.utils import general_utils
@@ -23,7 +24,6 @@ from src.utils.enumerators import BBType
 from src.utils.general_utils import (
     add_bb_into_image,
     add_bb_into_image_with_scale_color,
-    add_bb_into_image_with_bias_marker,
     get_files_dir,
     remove_file_extension,
     show_image_in_qt_component,
@@ -72,6 +72,8 @@ class Details_Dialog(QMainWindow, Details_UI):
         self.setMaximumWidth(self.width())
         # set selected image based on the list of images
         self.selected_image_index = 0
+        # Color marker toggle state
+        self.show_color_markers = False
 
     def initialize_ui(self):
         """
@@ -177,11 +179,14 @@ class Details_Dialog(QMainWindow, Details_UI):
         
         Bounding boxes are colored according to their COCO scale category:
         - Small (area ≤ 32²px): Blue RGB(100, 100, 255)
-        - Medium (32²px < area ≤ 96²px): Green RGB(100, 255, 100) + bias marker
-        - Large (area > 96²px): Red RGB(255, 100, 100) + bias marker
+        - Medium (32²px < area ≤ 96²px): Green RGB(100, 255, 100)
+        - Large (area > 96²px): Red RGB(255, 100, 100)
         
-        Medium and Large boxes include a crosshair marker showing the center of
-        gravity of the dominant color within the bounding box (bias profiling).
+        For medium and large boxes, when color markers are enabled, a crosshair
+        marker is drawn at the center of gravity of the dominant color region.
+        
+        The scale category is determined by the absolute pixel area of each
+        bounding box, following the COCO evaluation standard.
         
         Returns:
             numpy.ndarray: Image with bounding boxes drawn in scale-based colors.
@@ -194,20 +199,26 @@ class Details_Dialog(QMainWindow, Details_UI):
         img_name = self.image_files[self.selected_image_index]
         img_name = general_utils.get_file_name_only(img_name)
         
-        # Add ground truth bounding boxes with scale-based colors and bias markers
+        # Add ground truth bounding boxes with scale-based colors
         if self.chb_gt_bb.isChecked() and self.gt_annotations is not None:
             bboxes = BoundingBox.get_bounding_boxes_by_image_name(self.gt_annotations, img_name)
+            # Draw bounding boxes with COCO scale-based colors
             for bb in bboxes:
-                img = add_bb_into_image_with_bias_marker(
-                    img, bb, thickness=2, label=None, show_scale_in_label=False
+                img = add_bb_into_image_with_scale_color(
+                    img, bb, thickness=2, label=None, show_scale_in_label=False,
+                    show_color_marker=self.show_color_markers,
+                    marker_size=8, color_tolerance=40
                 )
         
-        # Add detection bounding boxes with scale-based colors and bias markers
+        # Add detection bounding boxes with scale-based colors
         if self.chb_det_bb.isChecked() and self.det_annotations is not None:
             bboxes = BoundingBox.get_bounding_boxes_by_image_name(self.det_annotations, img_name)
+            # Draw bounding boxes with COCO scale-based colors
             for bb in bboxes:
-                img = add_bb_into_image_with_bias_marker(
-                    img, bb, thickness=2, label=None, show_scale_in_label=False
+                img = add_bb_into_image_with_scale_color(
+                    img, bb, thickness=2, label=None, show_scale_in_label=False,
+                    show_color_marker=self.show_color_markers,
+                    marker_size=8, color_tolerance=40
                 )
         
         return img
@@ -289,3 +300,15 @@ class Details_Dialog(QMainWindow, Details_UI):
         self.loaded_image = self.draw_bounding_boxes()
         # Show image
         show_image_in_qt_component(self.loaded_image, self.lbl_sample_image)
+
+    def toggle_color_markers(self, enabled: bool):
+        """
+        Toggle display of dominant color crosshair markers on medium/large boxes.
+        
+        Args:
+            enabled: If True, show color markers; if False, hide them.
+        """
+        self.show_color_markers = enabled
+        if self.selected_image_index >= 0:
+            self.loaded_image = self.draw_bounding_boxes()
+            show_image_in_qt_component(self.loaded_image, self.lbl_sample_image)
