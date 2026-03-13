@@ -32,27 +32,29 @@ COCO_SCALE_THRESHOLDS = {
 }
 
 # BGR colors for OpenCV (reversed RGB for cv2 compatibility)
-# Using distinct, colorblind-friendly colors
+# Color scheme: Small=Red, Medium=Green, Large=Blue
 SCALE_COLORS_BGR = {
-    ObjectScale.SMALL: (255, 100, 100),    # Light blue (small objects)
-    ObjectScale.MEDIUM: (100, 255, 100),   # Light green (medium objects)
-    ObjectScale.LARGE: (100, 100, 255),    # Light red (large objects)
+    ObjectScale.SMALL: (100, 100, 255),    # Red (small objects)
+    ObjectScale.MEDIUM: (100, 255, 100),   # Green (medium objects)
+    ObjectScale.LARGE: (255, 100, 100),    # Blue (large objects)
     ObjectScale.UNKNOWN: (128, 128, 128),  # Gray (unknown/invalid)
 }
 
 # RGB colors for matplotlib and general use
+# Color scheme: Small=Red, Medium=Green, Large=Blue
 SCALE_COLORS_RGB = {
-    ObjectScale.SMALL: (100, 100, 255),    # Light blue
-    ObjectScale.MEDIUM: (100, 255, 100),   # Light green
-    ObjectScale.LARGE: (255, 100, 100),    # Light red
+    ObjectScale.SMALL: (255, 100, 100),    # Red
+    ObjectScale.MEDIUM: (100, 255, 100),   # Green
+    ObjectScale.LARGE: (100, 100, 255),    # Blue
     ObjectScale.UNKNOWN: (128, 128, 128),  # Gray
 }
 
 # Normalized RGB colors (0-1 range) for matplotlib
+# Color scheme: Small=Red, Medium=Green, Large=Blue
 SCALE_COLORS_NORMALIZED = {
-    ObjectScale.SMALL: (0.39, 0.39, 1.0),
-    ObjectScale.MEDIUM: (0.39, 1.0, 0.39),
-    ObjectScale.LARGE: (1.0, 0.39, 0.39),
+    ObjectScale.SMALL: (1.0, 0.39, 0.39),   # Red
+    ObjectScale.MEDIUM: (0.39, 1.0, 0.39),  # Green
+    ObjectScale.LARGE: (0.39, 0.39, 1.0),   # Blue
     ObjectScale.UNKNOWN: (0.5, 0.5, 0.5),
 }
 

@@ -206,9 +206,9 @@ When visualizing bounding boxes in the GUI, they are automatically color-coded b
 
 | Scale | Color | RGB Value |
 |:-----:|:-----:|:---------:|
-| Small | Blue | (100, 100, 255) |
+| Small | Red | (255, 100, 100) |
 | Medium | Green | (100, 255, 100) |
-| Large | Red | (255, 100, 100) |
+| Large | Blue | (100, 100, 255) |
 
 This color coding provides immediate visual feedback about object sizes in your dataset.
 
@@ -219,6 +219,57 @@ The statistics dialog displays:
 - Percentage distribution across scales
 - Average area per scale category
 - Visual indicators matching the color coding
+
+### Dataset Bias Profiling
+
+The toolkit includes a bias profiling feature that analyzes the color and spatial properties of medium and large bounding boxes in your dataset. This feature helps identify potential dataset biases related to color distribution and object positioning.
+
+#### Dominant Color Analysis
+
+For each medium and large bounding box, the system:
+1. Extracts the region of interest (ROI) from the image
+2. Uses k-means clustering to find the single most dominant RGB color
+3. Creates a binary mask of pixels matching the dominant color
+4. Calculates the center of gravity (centroid) of the color mask
+
+Small objects are excluded from this analysis due to insufficient pixel data for reliable color extraction.
+
+#### Visual Markers
+
+When viewing images with bounding boxes enabled, medium and large boxes display a crosshair marker at the calculated center of gravity:
+- The marker center is filled with the dominant color
+- The border uses a contrasting color (black or white) based on luminance for visibility
+- This provides visual feedback about color distribution within each object
+
+#### Per-Image Statistics
+
+The statistics panel dynamically updates to show bias profiling data for the current image:
+- **Dominant Color**: RGB values of the most prevalent color in each medium/large box
+- **Center of Gravity**: (x, y) coordinates indicating where the dominant color is spatially concentrated
+
+This information updates seamlessly as you navigate through images in the dataset.
+
+#### Programmatic Bias Analysis
+
+```python
+from src.utils.color_analysis import (
+    analyze_bounding_box_color,
+    analyze_bounding_box_from_bb,
+    ColorAnalysisResult
+)
+
+# Analyze a bounding box region
+result = analyze_bounding_box_color(image, (x1, y1, x2, y2))
+
+if result is not None:  # None for small boxes
+    print(f"Scale: {result.scale}")
+    print(f"Dominant Color RGB: {result.dominant_color_rgb}")
+    print(f"Center of Gravity: {result.center_of_gravity}")
+    print(f"Contrasting Color: {result.contrasting_color_rgb}")
+
+# Or use with a BoundingBox object
+result = analyze_bounding_box_from_bb(image, bounding_box)
+```
 
 #### Programmatic Scale Classification
 

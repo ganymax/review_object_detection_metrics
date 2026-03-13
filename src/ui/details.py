@@ -4,11 +4,12 @@ Details dialog for displaying bounding box statistics and image visualization.
 This module provides the Details_Dialog class which displays:
 - Bounding box statistics (count, average area, distribution by class)
 - Image viewer with bounding boxes drawn using COCO scale-based colors:
-  - Small objects (≤32²px): Blue
+  - Small objects (≤32²px): Red
   - Medium objects (32²-96²px): Green  
-  - Large objects (>96²px): Red
+  - Large objects (>96²px): Blue
 - Scale distribution statistics and plotting
 - Bias profiling with dominant color markers for medium/large boxes
+- Per-image color analysis showing dominant color and center of gravity
 """
 
 import os
@@ -20,7 +21,7 @@ from PyQt5.QtWidgets import QFileDialog, QMainWindow
 from src.bounding_box import BoundingBox
 from src.ui.details_ui import Ui_Dialog as Details_UI
 from src.utils import general_utils
-from src.utils.enumerators import BBType
+from src.utils.enumerators import BBType, BBFormat
 from src.utils.general_utils import (
     add_bb_into_image,
     add_bb_into_image_with_scale_color,
@@ -30,6 +31,7 @@ from src.utils.general_utils import (
     plot_bb_per_scale,
 )
 from src.utils.object_scale import ObjectScale, get_scale_label
+from src.utils.color_analysis import analyze_bounding_box_color
 
 
 class Details_Dialog(QMainWindow, Details_UI):
@@ -63,9 +65,9 @@ class Details_Dialog(QMainWindow, Details_UI):
         self.text_statistics += '<br><br>* <b>Scale distribution (COCO standard):</b>'
         self.text_statistics += '<br>#SCALE_DISTRIBUTION#'
         self.text_statistics += '<br><br><i>Note: Bounding boxes are color-coded by scale:</i>'
-        self.text_statistics += '<br><span style="color:blue">■</span> Small (≤32²px) '
+        self.text_statistics += '<br><span style="color:red">■</span> Small (≤32²px) '
         self.text_statistics += '<span style="color:green">■</span> Medium (32²-96²px) '
-        self.text_statistics += '<span style="color:red">■</span> Large (>96²px)'
+        self.text_statistics += '<span style="color:blue">■</span> Large (>96²px)'
         self.lbl_sample_image.setScaledContents(True)
         # set maximum and minimum size
         self.setMaximumHeight(self.height())
@@ -125,15 +127,19 @@ class Details_Dialog(QMainWindow, Details_UI):
             pct = self.scale_stats.get_percentage(scale)
             label = get_scale_label(scale)
             # Color code the scale names in the statistics
+            # Color scheme: Small=Red, Medium=Green, Large=Blue
             if scale == ObjectScale.SMALL:
-                color = 'blue'
+                color = 'red'
             elif scale == ObjectScale.MEDIUM:
                 color = 'green'
             else:
-                color = 'red'
+                color = 'blue'
             scale_distribution += f'   <span style="color:{color}">{label}</span>: {count} ({pct:.1f}%)<br>'
         stats = stats.replace('#SCALE_DISTRIBUTION#', scale_distribution)
         
+        # Store base statistics for later updates with per-image data
+        self.base_statistics_text = stats
+        self.current_image_bias_data = []
         self.txb_statistics.setText(stats)
 
         # get first image file and show it
@@ -156,29 +162,31 @@ class Details_Dialog(QMainWindow, Details_UI):
             self.chb_det_bb.setEnabled(False)
             self.lbl_sample_image.clear()
             self.lbl_image_file_name.setText('no image to show')
+            self._update_statistics_display()
             return
         # Get all annotations and detections from this file
         if self.annot_obj is not None:
-            # If Ground truth, bb will be drawn in green, red otherwise
             self.btn_previous_image.setEnabled(True)
             self.btn_next_image.setEnabled(True)
             self.btn_save_image.setEnabled(True)
             self.chb_gt_bb.setEnabled(True)
             self.chb_det_bb.setEnabled(True)
             self.lbl_image_file_name.setText(self.image_files[self.selected_image_index])
-            # Draw bounding boxes
-            self.loaded_image = self.draw_bounding_boxes()
+            # Draw bounding boxes and compute bias profiling
+            self.loaded_image, self.current_image_bias_data = self.draw_bounding_boxes()
             # Show image
             show_image_in_qt_component(self.loaded_image, self.lbl_sample_image)
+            # Update statistics with per-image bias profiling data
+            self._update_statistics_display()
 
     def draw_bounding_boxes(self):
         """
         Draw bounding boxes on the current image using COCO scale-based colors.
         
         Bounding boxes are colored according to their COCO scale category:
-        - Small (area ≤ 32²px): Blue RGB(100, 100, 255)
+        - Small (area ≤ 32²px): Red RGB(255, 100, 100)
         - Medium (32²px < area ≤ 96²px): Green RGB(100, 255, 100)
-        - Large (area > 96²px): Red RGB(255, 100, 100)
+        - Large (area > 96²px): Blue RGB(100, 100, 255)
         
         For medium and large boxes, a crosshair marker is drawn at the center
         of gravity of the dominant color region when bounding boxes are displayed.
@@ -187,7 +195,8 @@ class Details_Dialog(QMainWindow, Details_UI):
         bounding box, following the COCO evaluation standard.
         
         Returns:
-            numpy.ndarray: Image with bounding boxes drawn in scale-based colors.
+            tuple: (numpy.ndarray, list) - Image with bounding boxes drawn and
+                   list of bias profiling data for medium/large boxes.
         """
         # Load image to obtain a clean image (without BBs)
         img_path = os.path.join(self.dir_images, self.image_files[self.selected_image_index])
@@ -202,6 +211,9 @@ class Details_Dialog(QMainWindow, Details_UI):
         drawing_det = self.chb_det_bb.isChecked() and self.det_annotations is not None
         show_markers = drawing_gt or drawing_det
         
+        # Collect bias profiling data for medium and large boxes
+        bias_data = []
+        
         # Add ground truth bounding boxes with scale-based colors
         if drawing_gt:
             bboxes = BoundingBox.get_bounding_boxes_by_image_name(self.gt_annotations, img_name)
@@ -211,6 +223,11 @@ class Details_Dialog(QMainWindow, Details_UI):
                     show_color_marker=show_markers,
                     marker_size=8, color_tolerance=40
                 )
+                # Collect bias data for medium/large boxes
+                bias_info = self._get_bias_info_for_bb(img, bb)
+                if bias_info:
+                    bias_info['type'] = 'GT'
+                    bias_data.append(bias_info)
         
         # Add detection bounding boxes with scale-based colors
         if drawing_det:
@@ -221,8 +238,79 @@ class Details_Dialog(QMainWindow, Details_UI):
                     show_color_marker=show_markers,
                     marker_size=8, color_tolerance=40
                 )
+                # Collect bias data for medium/large boxes
+                bias_info = self._get_bias_info_for_bb(img, bb)
+                if bias_info:
+                    bias_info['type'] = 'DET'
+                    bias_data.append(bias_info)
         
-        return img
+        return img, bias_data
+    
+    def _get_bias_info_for_bb(self, img, bb):
+        """
+        Get bias profiling information for a bounding box.
+        
+        Only returns data for medium and large boxes.
+        
+        Args:
+            img: The image (RGB format).
+            bb: BoundingBox object.
+        
+        Returns:
+            dict or None: Bias info with class_id, scale, dominant_color, center_of_gravity.
+        """
+        try:
+            scale = bb.get_scale()
+            if scale not in (ObjectScale.MEDIUM, ObjectScale.LARGE):
+                return None
+            
+            coords = bb.get_absolute_bounding_box(format=BBFormat.XYX2Y2)
+            analysis = analyze_bounding_box_color(img, coords, color_tolerance=40)
+            
+            if analysis is None:
+                return None
+            
+            return {
+                'class_id': bb.get_class_id(),
+                'scale': scale.value,
+                'dominant_color': analysis.dominant_color_rgb,
+                'center_of_gravity': analysis.center_of_gravity,
+            }
+        except Exception:
+            return None
+    
+    def _update_statistics_display(self):
+        """
+        Update the statistics text box with dataset stats and per-image bias profiling.
+        """
+        # Start with the base statistics
+        stats_text = self.base_statistics_text
+        
+        # Add per-image bias profiling data if available
+        if hasattr(self, 'current_image_bias_data') and self.current_image_bias_data:
+            stats_text += '<br><br><b>Current Image - Bias Profiling (Medium/Large boxes):</b>'
+            stats_text += '<br><i>Dominant color and center of gravity for each box:</i><br>'
+            
+            for i, data in enumerate(self.current_image_bias_data, 1):
+                class_id = data.get('class_id', 'unknown')
+                scale = data.get('scale', 'unknown')
+                dom_color = data.get('dominant_color', (0, 0, 0))
+                cog = data.get('center_of_gravity', (0, 0))
+                bb_type = data.get('type', '')
+                
+                # Create a color swatch using the dominant color
+                r, g, b = dom_color
+                color_hex = f'#{r:02x}{g:02x}{b:02x}'
+                
+                stats_text += f'<br>{i}. [{bb_type}] <b>{class_id}</b> ({scale})'
+                stats_text += f'<br>&nbsp;&nbsp;&nbsp;'
+                stats_text += f'<span style="background-color:{color_hex};color:{color_hex}">██</span> '
+                stats_text += f'RGB({r}, {g}, {b})'
+                stats_text += f'<br>&nbsp;&nbsp;&nbsp;CoG: ({cog[0]}, {cog[1]})'
+        elif hasattr(self, 'current_image_bias_data'):
+            stats_text += '<br><br><i>No medium/large boxes in current image for bias profiling.</i>'
+        
+        self.txb_statistics.setText(stats_text)
 
     def show_dialog(self, type_bb, gt_annotations=None, det_annotations=None, dir_images=None):
         self.type_bb = type_bb
@@ -291,15 +379,19 @@ class Details_Dialog(QMainWindow, Details_UI):
             cv2.imwrite(file_name, cv2.cvtColor(self.loaded_image, cv2.COLOR_RGB2BGR))
 
     def chb_det_bb_clicked(self, state):
-        # Draw bounding boxes
-        self.loaded_image = self.draw_bounding_boxes()
+        # Draw bounding boxes and update bias data
+        self.loaded_image, self.current_image_bias_data = self.draw_bounding_boxes()
         # Show image
         show_image_in_qt_component(self.loaded_image, self.lbl_sample_image)
+        # Update statistics with bias profiling data
+        self._update_statistics_display()
 
     def chb_gt_bb_clicked(self, state):
-        # Draw bounding boxes
-        self.loaded_image = self.draw_bounding_boxes()
+        # Draw bounding boxes and update bias data
+        self.loaded_image, self.current_image_bias_data = self.draw_bounding_boxes()
         # Show image
         show_image_in_qt_component(self.loaded_image, self.lbl_sample_image)
+        # Update statistics with bias profiling data
+        self._update_statistics_display()
 
 

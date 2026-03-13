@@ -177,6 +177,43 @@ class TestScaleIntegration:
             assert all(0 <= c <= 255 for c in rgb)
             assert all(0 <= c <= 255 for c in bgr)
             assert all(0.0 <= c <= 1.0 for c in norm)
+    
+    def test_scale_color_scheme(self):
+        """Test that color scheme is: Small=Red, Medium=Green, Large=Blue."""
+        # Create boxes of each scale
+        small_bb = BoundingBox(
+            image_name='test', class_id='obj',
+            coordinates=(0, 0, 20, 20),  # 400 area - small
+            type_coordinates=CoordinatesType.ABSOLUTE,
+            bb_type=BBType.GROUND_TRUTH, format=BBFormat.XYWH
+        )
+        medium_bb = BoundingBox(
+            image_name='test', class_id='obj',
+            coordinates=(0, 0, 50, 50),  # 2500 area - medium
+            type_coordinates=CoordinatesType.ABSOLUTE,
+            bb_type=BBType.GROUND_TRUTH, format=BBFormat.XYWH
+        )
+        large_bb = BoundingBox(
+            image_name='test', class_id='obj',
+            coordinates=(0, 0, 100, 100),  # 10000 area - large
+            type_coordinates=CoordinatesType.ABSOLUTE,
+            bb_type=BBType.GROUND_TRUTH, format=BBFormat.XYWH
+        )
+        
+        # Small should be red (R > G and R > B)
+        small_rgb = small_bb.get_scale_color('rgb')
+        assert small_rgb[0] > small_rgb[1] and small_rgb[0] > small_rgb[2], \
+            f"Small should be red, got RGB{small_rgb}"
+        
+        # Medium should be green (G > R and G > B)
+        medium_rgb = medium_bb.get_scale_color('rgb')
+        assert medium_rgb[1] > medium_rgb[0] and medium_rgb[1] > medium_rgb[2], \
+            f"Medium should be green, got RGB{medium_rgb}"
+        
+        # Large should be blue (B > R and B > G)
+        large_rgb = large_bb.get_scale_color('rgb')
+        assert large_rgb[2] > large_rgb[0] and large_rgb[2] > large_rgb[1], \
+            f"Large should be blue, got RGB{large_rgb}"
 
 
 class TestCOCOEvaluatorScaleMetrics:

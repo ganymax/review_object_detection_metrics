@@ -151,6 +151,27 @@ class TestScaleColors:
         # Should return gray
         assert color == (128, 128, 128)
     
+    def test_color_scheme_small_is_red(self):
+        # Small objects should be red (RGB: 255, 100, 100)
+        rgb = get_scale_color_rgb(ObjectScale.SMALL)
+        assert rgb[0] > rgb[1] and rgb[0] > rgb[2]  # Red dominant
+        bgr = get_scale_color_bgr(ObjectScale.SMALL)
+        assert bgr[2] > bgr[0] and bgr[2] > bgr[1]  # Red in BGR format
+    
+    def test_color_scheme_medium_is_green(self):
+        # Medium objects should be green (RGB: 100, 255, 100)
+        rgb = get_scale_color_rgb(ObjectScale.MEDIUM)
+        assert rgb[1] > rgb[0] and rgb[1] > rgb[2]  # Green dominant
+        bgr = get_scale_color_bgr(ObjectScale.MEDIUM)
+        assert bgr[1] > bgr[0] and bgr[1] > bgr[2]  # Green in BGR format
+    
+    def test_color_scheme_large_is_blue(self):
+        # Large objects should be blue (RGB: 100, 100, 255)
+        rgb = get_scale_color_rgb(ObjectScale.LARGE)
+        assert rgb[2] > rgb[0] and rgb[2] > rgb[1]  # Blue dominant
+        bgr = get_scale_color_bgr(ObjectScale.LARGE)
+        assert bgr[0] > bgr[1] and bgr[0] > bgr[2]  # Blue in BGR format
+    
     def test_invalid_scale_type(self):
         # Should return UNKNOWN color for invalid input
         color = get_scale_color_bgr("invalid")
