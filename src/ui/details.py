@@ -16,7 +16,7 @@ import random
 
 import cv2
 import matplotlib.pyplot as plt
-from PyQt5.QtWidgets import QFileDialog, QMainWindow, QCheckBox
+from PyQt5.QtWidgets import QFileDialog, QMainWindow
 from src.bounding_box import BoundingBox
 from src.ui.details_ui import Ui_Dialog as Details_UI
 from src.utils import general_utils
@@ -72,8 +72,6 @@ class Details_Dialog(QMainWindow, Details_UI):
         self.setMaximumWidth(self.width())
         # set selected image based on the list of images
         self.selected_image_index = 0
-        # Color marker toggle state
-        self.show_color_markers = False
 
     def initialize_ui(self):
         """
@@ -182,8 +180,8 @@ class Details_Dialog(QMainWindow, Details_UI):
         - Medium (32²px < area ≤ 96²px): Green RGB(100, 255, 100)
         - Large (area > 96²px): Red RGB(255, 100, 100)
         
-        For medium and large boxes, when color markers are enabled, a crosshair
-        marker is drawn at the center of gravity of the dominant color region.
+        For medium and large boxes, a crosshair marker is drawn at the center
+        of gravity of the dominant color region when bounding boxes are displayed.
         
         The scale category is determined by the absolute pixel area of each
         bounding box, following the COCO evaluation standard.
@@ -199,25 +197,28 @@ class Details_Dialog(QMainWindow, Details_UI):
         img_name = self.image_files[self.selected_image_index]
         img_name = general_utils.get_file_name_only(img_name)
         
+        # Enable color markers when any bounding boxes are being drawn
+        drawing_gt = self.chb_gt_bb.isChecked() and self.gt_annotations is not None
+        drawing_det = self.chb_det_bb.isChecked() and self.det_annotations is not None
+        show_markers = drawing_gt or drawing_det
+        
         # Add ground truth bounding boxes with scale-based colors
-        if self.chb_gt_bb.isChecked() and self.gt_annotations is not None:
+        if drawing_gt:
             bboxes = BoundingBox.get_bounding_boxes_by_image_name(self.gt_annotations, img_name)
-            # Draw bounding boxes with COCO scale-based colors
             for bb in bboxes:
                 img = add_bb_into_image_with_scale_color(
                     img, bb, thickness=2, label=None, show_scale_in_label=False,
-                    show_color_marker=self.show_color_markers,
+                    show_color_marker=show_markers,
                     marker_size=8, color_tolerance=40
                 )
         
         # Add detection bounding boxes with scale-based colors
-        if self.chb_det_bb.isChecked() and self.det_annotations is not None:
+        if drawing_det:
             bboxes = BoundingBox.get_bounding_boxes_by_image_name(self.det_annotations, img_name)
-            # Draw bounding boxes with COCO scale-based colors
             for bb in bboxes:
                 img = add_bb_into_image_with_scale_color(
                     img, bb, thickness=2, label=None, show_scale_in_label=False,
-                    show_color_marker=self.show_color_markers,
+                    show_color_marker=show_markers,
                     marker_size=8, color_tolerance=40
                 )
         
@@ -290,28 +291,15 @@ class Details_Dialog(QMainWindow, Details_UI):
             cv2.imwrite(file_name, cv2.cvtColor(self.loaded_image, cv2.COLOR_RGB2BGR))
 
     def chb_det_bb_clicked(self, state):
-        # Enable color markers when drawing bounding boxes
-        self._update_color_markers_state()
         # Draw bounding boxes
         self.loaded_image = self.draw_bounding_boxes()
         # Show image
         show_image_in_qt_component(self.loaded_image, self.lbl_sample_image)
 
     def chb_gt_bb_clicked(self, state):
-        # Enable color markers when drawing bounding boxes
-        self._update_color_markers_state()
         # Draw bounding boxes
         self.loaded_image = self.draw_bounding_boxes()
         # Show image
         show_image_in_qt_component(self.loaded_image, self.lbl_sample_image)
 
-    def _update_color_markers_state(self):
-        """
-        Update color markers state based on checkbox states.
-        
-        Color markers are enabled when either ground truth or detection
-        bounding boxes are being displayed.
-        """
-        gt_checked = self.chb_gt_bb.isVisible() and self.chb_gt_bb.isChecked()
-        det_checked = self.chb_det_bb.isVisible() and self.chb_det_bb.isChecked()
-        self.show_color_markers = gt_checked or det_checked
+
