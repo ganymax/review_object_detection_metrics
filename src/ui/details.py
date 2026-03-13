@@ -290,25 +290,28 @@ class Details_Dialog(QMainWindow, Details_UI):
             cv2.imwrite(file_name, cv2.cvtColor(self.loaded_image, cv2.COLOR_RGB2BGR))
 
     def chb_det_bb_clicked(self, state):
+        # Enable color markers when drawing bounding boxes
+        self._update_color_markers_state()
         # Draw bounding boxes
         self.loaded_image = self.draw_bounding_boxes()
         # Show image
         show_image_in_qt_component(self.loaded_image, self.lbl_sample_image)
 
     def chb_gt_bb_clicked(self, state):
+        # Enable color markers when drawing bounding boxes
+        self._update_color_markers_state()
         # Draw bounding boxes
         self.loaded_image = self.draw_bounding_boxes()
         # Show image
         show_image_in_qt_component(self.loaded_image, self.lbl_sample_image)
 
-    def toggle_color_markers(self, enabled: bool):
+    def _update_color_markers_state(self):
         """
-        Toggle display of dominant color crosshair markers on medium/large boxes.
+        Update color markers state based on checkbox states.
         
-        Args:
-            enabled: If True, show color markers; if False, hide them.
+        Color markers are enabled when either ground truth or detection
+        bounding boxes are being displayed.
         """
-        self.show_color_markers = enabled
-        if self.selected_image_index >= 0:
-            self.loaded_image = self.draw_bounding_boxes()
-            show_image_in_qt_component(self.loaded_image, self.lbl_sample_image)
+        gt_checked = self.chb_gt_bb.isVisible() and self.chb_gt_bb.isChecked()
+        det_checked = self.chb_det_bb.isVisible() and self.chb_det_bb.isChecked()
+        self.show_color_markers = gt_checked or det_checked
